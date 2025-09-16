@@ -57,20 +57,20 @@ const Segments: React.FC = () => {
 
   // FIX: Corrected the type for the 'segment' parameter.
   const handleSegmentGenerated = (segment: {
-    conditions: RuleCondition[];
-    suggestedName?: string;
-    explanation?: string;
-  }) => {
-    console.log('Generated segment:', segment)
-    // FIX: Always wrap the generated conditions in a valid SegmentRules object.
-    setRules({ operator: 'AND', conditions: segment.conditions || [] })
-    
-    setFormData(prev => ({ 
-      ...prev, 
-      name: prev.name || segment.suggestedName || 'AI Generated Segment',
-      description: prev.description || segment.explanation || ''
-    }))
-  }
+  conditions: RuleCondition[];
+  suggestedName?: string;
+  explanation?: string;
+}) => {
+  console.log('Generated segment:', segment);
+  // This line is the critical fix
+  setRules({ operator: 'AND', conditions: segment.conditions || [] });
+
+  setFormData(prev => ({ 
+    ...prev, 
+    name: prev.name || segment.suggestedName || 'AI Generated Segment',
+    description: prev.description || segment.explanation || ''
+  }));
+};
 
   const resetForm = () => {
     setFormData({
