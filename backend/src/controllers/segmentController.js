@@ -20,19 +20,30 @@ const createSegment = async (req, res) => {
 
     let finalRules = rules;
 
-    if (nlpQuery && !rules) {
-      try {
+    // In segmentController.js - around line where AI generates rules
+if (nlpQuery && !rules) {
+    try {
         console.log('🤖 Converting NLP query to rules:', nlpQuery);
         finalRules = await generateSegmentFromNLP(nlpQuery);
-        console.log('✅ AI generated rules:', finalRules);
-      } catch (aiError) {
+        console.log('✅ AI generated rules:', JSON.stringify(finalRules, null, 2));
+        
+        // ADD THIS VALIDATION CHECK
+        if (!finalRules.operator) {
+            finalRules.operator = 'AND'; // Default operator
+        }
+        if (!finalRules.conditions || !Array.isArray(finalRules.conditions)) {
+            finalRules.conditions = [];
+        }
+        
+    } catch (aiError) {
         console.error('❌ AI conversion failed:', aiError);
         return res.status(400).json({
-          success: false,
-          error: 'Failed to convert natural language query to rules'
+            success: false,
+            error: 'Failed to convert natural language query to rules'
         });
-      }
     }
+}
+
 
     if (!finalRules || !finalRules.conditions || !Array.isArray(finalRules.conditions)) {
       return res.status(400).json({
