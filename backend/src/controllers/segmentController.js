@@ -10,7 +10,7 @@ const createSegment = async (req, res) => {
 
     const { name, description, rules, nlpQuery } = req.body;
     const userId = req.user.id;
-
+//final check here 
     // Validate required fields
     if (!name || (!rules && !nlpQuery)) {
       return res.status(400).json({
