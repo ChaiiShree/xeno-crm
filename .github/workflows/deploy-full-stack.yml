@@ -1,0 +1,85 @@
+name: Deploy Full Stack Application
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ['README.md', '.gitignore', 'docs/**']
+  workflow_dispatch:
+
+jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.changes.outputs.backend }}
+      frontend: ${{ steps.changes.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v2
+        id: changes
+        with:
+          filters: |
+            backend:
+              - 'backend/**'
+            frontend:
+              - 'frontend/**'
+
+  deploy-backend:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          lfs: true
+
+      - name: Deploy Backend to HF Spaces
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          cd backend
+          git config --global user.email "actions@github.com"
+          git config --global user.name "GitHub Actions"
+          git init
+          git remote add hf https://Xendaine99:$HF_TOKEN@huggingface.co/spaces/Xendaine99/xeno-crm-backend
+          git add .
+          git commit -m "Backend deployment: ${{ github.sha }}"
+          git push --force hf main
+
+  deploy-frontend:
+    needs: [detect-changes, deploy-backend]
+    if: always() && (needs.detect-changes.outputs.frontend == 'true' || needs.deploy-backend.result == 'success')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install and Build
+        run: |
+          cd frontend
+          npm ci
+          npm run build
+
+      - name: Deploy to Vercel
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          cd frontend
+          npx vercel --prod --token $VERCEL_TOKEN
+
+  notify-completion:
+    needs: [deploy-backend, deploy-frontend]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deployment Summary
+        run: |
+          echo "🚀 Deployment Complete!"
+          echo "Backend: https://xendaine99-xeno-crm-backend.hf.space"
+          echo "Frontend: https://your-frontend.vercel.app"

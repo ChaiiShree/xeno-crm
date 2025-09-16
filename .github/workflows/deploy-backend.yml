@@ -1,0 +1,40 @@
+name: Deploy Backend to Hugging Face
+
+on:
+  push:
+    branches: [main]
+    paths: ['backend/**']
+  workflow_dispatch:
+
+jobs:
+  deploy-backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          lfs: true
+
+      - name: Push to Hugging Face Spaces
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          cd backend
+          git config --global user.email "actions@github.com"
+          git config --global user.name "GitHub Actions"
+          git init
+          git remote add hf https://Xendaine99:$HF_TOKEN@huggingface.co/spaces/Xendaine99/xeno-crm-backend
+          git add .
+          git commit -m "Deploy backend: ${{ github.sha }}"
+          git push --force hf main
+
+  health-check:
+    needs: deploy-backend
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for deployment
+        run: sleep 60
+      
+      - name: Check backend health
+        run: |
+          curl -f https://xendaine99-xeno-crm-backend.hf.space/health || exit 1
