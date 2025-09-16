@@ -11,7 +11,7 @@ const { connectRedis } = require('./config/redis');
 require('./config/passport');
 
 const authRoutes = require('./routes/auth');
-const customerRoutes = require('./routes/customers');
+const customerRoutes =require('./routes/customers');
 const orderRoutes = require('./routes/orders');
 const segmentRoutes = require('./routes/segments');
 const campaignRoutes = require('./routes/campaigns');
@@ -27,7 +27,8 @@ app.use(helmet({
 
 app.use(cors({
   origin: [
-    'https://frontend-ix7tjnt2l-chaitanya-jayants-projects.vercel.app',
+    // FIX: Add your main production frontend URL to the whitelist
+    'https://frontend-mocha-five-37.vercel.app',    
     'http://localhost:5173',
     'http://localhost:3000'
   ],
@@ -45,7 +46,8 @@ app.use(session({
   resave: false,
   saveUninitialized: false,
   cookie: {
-    secure: false, // Set to true in production with HTTPS
+    // FIX: Set 'secure' to true in production for better security
+    secure: process.env.NODE_ENV === 'production',
     maxAge: 24 * 60 * 60 * 1000
   }
 }));
