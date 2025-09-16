@@ -10,8 +10,7 @@ const createSegment = async (req, res) => {
 
     const { name, description, rules, nlpQuery } = req.body;
     const userId = req.user.id;
-//final check here 
-    // Validate required fields
+
     if (!name || (!rules && !nlpQuery)) {
       return res.status(400).json({
         success: false,
@@ -21,7 +20,6 @@ const createSegment = async (req, res) => {
 
     let finalRules = rules;
 
-    // If NLP query provided, convert to rules using AI
     if (nlpQuery && !rules) {
       try {
         console.log('🤖 Converting NLP query to rules:', nlpQuery);
@@ -36,7 +34,6 @@ const createSegment = async (req, res) => {
       }
     }
 
-    // Validate rules structure
     if (!finalRules || !finalRules.conditions || !Array.isArray(finalRules.conditions)) {
       return res.status(400).json({
         success: false,
@@ -44,10 +41,8 @@ const createSegment = async (req, res) => {
       });
     }
 
-    // Calculate audience size
     const audienceSize = await evaluateRules(finalRules);
 
-    // Create segment
     const newSegment = await client.query(
       `INSERT INTO segments (name, description, rules_json, created_by, audience_size)
        VALUES ($1, $2, $3, $4, $5) RETURNING *`,
@@ -70,14 +65,19 @@ const createSegment = async (req, res) => {
   } catch (error) {
     await client.query('ROLLBACK');
     console.error('❌ Create segment error:', error);
+    // FIX: Send a more detailed error message back to the frontend for debugging.
     res.status(500).json({
       success: false,
-      error: 'Failed to create segment'
+      error: 'Failed to create segment due to an internal error.',
+      details: error.message 
     });
   } finally {
     client.release();
   }
 };
+
+// ... (The rest of your file remains exactly the same)
+// ... (getSegments, getSegmentById, previewAudience, etc.)
 
 const getSegments = async (req, res) => {
   try {
@@ -107,7 +107,6 @@ const getSegments = async (req, res) => {
       params.push(`%${search}%`);
     }
 
-    // Add sorting
     const validSortFields = ['name', 'audience_size', 'created_at', 'updated_at'];
     const validSortOrders = ['ASC', 'DESC'];
     
@@ -122,7 +121,6 @@ const getSegments = async (req, res) => {
       pool.query(countQuery, search ? [userId, `%${search}%`] : [userId])
     ]);
 
-    // Parse rules_json for each segment
     const segmentsWithParsedRules = segments.rows.map(segment => ({
       ...segment,
       rules_json: typeof segment.rules_json === 'string' 
@@ -204,7 +202,6 @@ const previewAudience = async (req, res) => {
 
     let finalRules = rules;
 
-    // Convert NLP query to rules if provided
     if (nlpQuery && !rules) {
       try {
         finalRules = await generateSegmentFromNLP(nlpQuery);
@@ -217,10 +214,7 @@ const previewAudience = async (req, res) => {
       }
     }
 
-    // Calculate audience size
     const audienceSize = await evaluateRules(finalRules);
-
-    // Get sample customers (up to 10)
     const sampleCustomers = await evaluateRules(finalRules, 10, true);
 
     res.json({
@@ -249,7 +243,6 @@ const updateSegment = async (req, res) => {
     const { name, description, rules } = req.body;
     const userId = req.user.id;
 
-    // Check if segment exists and belongs to user
     const existingSegment = await client.query(
       'SELECT id FROM segments WHERE id = $1 AND created_by = $2',
       [id, userId]
@@ -262,7 +255,6 @@ const updateSegment = async (req, res) => {
       });
     }
 
-    // Validate rules if provided
     let audienceSize = null;
     if (rules) {
       if (!rules.conditions || !Array.isArray(rules.conditions)) {
@@ -274,7 +266,6 @@ const updateSegment = async (req, res) => {
       audienceSize = await evaluateRules(rules);
     }
 
-    // Update segment
     const updateFields = [];
     const updateValues = [];
     let paramIndex = 1;
