@@ -11,7 +11,6 @@ import Campaigns from './pages/Campaigns';
 import Analytics from './pages/Analytics';
 import { useAuth } from './hooks/useAuth';
 import LoadingSpinner from './components/ui/LoadingSpinner';
-// Import the component for the new route
 import AuthCallback from './pages/AuthCallback';
 
 function App() {
