@@ -21,19 +21,31 @@ const createSegment = async (req, res) => {
     let finalRules = rules;
 
     // In segmentController.js - around line where AI generates rules
+// In segmentController.js - after AI generates rules
 if (nlpQuery && !rules) {
     try {
         console.log('🤖 Converting NLP query to rules:', nlpQuery);
         finalRules = await generateSegmentFromNLP(nlpQuery);
-        console.log('✅ AI generated rules:', JSON.stringify(finalRules, null, 2));
+        console.log('✅ AI generated rules (before mapping):', JSON.stringify(finalRules, null, 2));
         
-        // ADD THIS VALIDATION CHECK
-        if (!finalRules.operator) {
-            finalRules.operator = 'AND'; // Default operator
+        // ADD THIS FIELD MAPPING
+        if (finalRules && finalRules.conditions) {
+            finalRules.conditions = finalRules.conditions.map(condition => {
+                // Map frontend field names to database field names
+                const fieldMapping = {
+                    'totalSpend': 'total_spend',
+                    'lastOrderDate': 'last_visit',
+                    'visitCount': 'visit_count'
+                };
+                
+                return {
+                    ...condition,
+                    field: fieldMapping[condition.field] || condition.field
+                };
+            });
         }
-        if (!finalRules.conditions || !Array.isArray(finalRules.conditions)) {
-            finalRules.conditions = [];
-        }
+        
+        console.log('✅ AI generated rules (after mapping):', JSON.stringify(finalRules, null, 2));
         
     } catch (aiError) {
         console.error('❌ AI conversion failed:', aiError);
@@ -43,7 +55,6 @@ if (nlpQuery && !rules) {
         });
     }
 }
-
 
     if (!finalRules || !finalRules.conditions || !Array.isArray(finalRules.conditions)) {
       return res.status(400).json({
