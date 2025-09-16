@@ -1,3 +1,5 @@
+import type { Customer } from './customer'; 
+
 export interface RuleCondition {
   field: 'total_spend' | 'visit_count' | 'last_visit'
   operator: '>' | '<' | '>=' | '<=' | '=' | '!='

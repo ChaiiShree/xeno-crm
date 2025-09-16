@@ -1,8 +1,10 @@
+// frontend/src/pages/Segments.tsx
 import React, { useState } from 'react'
 import { Plus, Search, Target, Sparkles } from 'lucide-react'
 import { useAPI } from '../hooks/useAPI'
 import { useRuleBuilder } from '../hooks/useRuleBuilder'
-import type { CreateSegmentRequest, Segment } from '../types/segment'
+// FIX: Import SegmentRules type to use it for state.
+import type { CreateSegmentRequest, Segment, SegmentRules } from '../types/segment'
 import Button from '../components/ui/Button'
 import Input from '../components/ui/Input'
 import Modal from '../components/ui/Modal'
@@ -18,7 +20,8 @@ const Segments: React.FC = () => {
   const [formData, setFormData] = useState({
     name: '',
     description: '',
-    rules: undefined,
+    // FIX: rules property is part of the form state, but not used here.
+    // The rules state is managed by the useRuleBuilder hook directly.
     nlpQuery: ''
   })
 
@@ -31,7 +34,7 @@ const Segments: React.FC = () => {
     rules,
     setRules,
     resetRules,
-    isValidRules
+    isValidRules // FIX: Get isValidRules from the hook to pass it down.
   } = useRuleBuilder()
 
   const handleCreateSegment = () => {
@@ -54,13 +57,16 @@ const Segments: React.FC = () => {
     })
   }
 
-  const handleSegmentGenerated = (segment: any) => {
-    // Handle the generated segment rules from AI
+  // FIX: Added explicit types for the 'segment' parameter.
+  const handleSegmentGenerated = (segment: {
+    conditions: SegmentRules;
+    suggestedName?: string;
+    explanation?: string;
+  }) => {
     console.log('Generated segment:', segment)
-    setRules(segment.conditions || [])
+    setRules(segment.conditions || { operator: 'AND', conditions: [] })
     setFormData(prev => ({ 
       ...prev, 
-      rules: segment.conditions,
       name: prev.name || segment.suggestedName || 'AI Generated Segment',
       description: prev.description || segment.explanation || ''
     }))
@@ -70,7 +76,6 @@ const Segments: React.FC = () => {
     setFormData({
       name: '',
       description: '',
-      rules: undefined,
       nlpQuery: ''
     })
     resetRules()
@@ -182,33 +187,34 @@ const Segments: React.FC = () => {
           resetForm()
         }}
         title="Create New Segment"
-        size="xl"
+        size="2xl" // FIX: Increased modal size for better layout
       >
-        <div className="space-y-6">
+        <div className="p-6 space-y-6">
           {/* Basic Info */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Segment Name
-            </label>
-            <Input
-              value={formData.name}
-              onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
-              placeholder="e.g., High Value Customers"
-            />
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Segment Name
+              </label>
+              <Input
+                value={formData.name}
+                onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                placeholder="e.g., High Value Customers"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Description (Optional)
+              </label>
+              <Input
+                value={formData.description}
+                onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
+                placeholder="Describe this customer segment..."
+              />
+            </div>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Description (Optional)
-            </label>
-            <textarea
-              value={formData.description}
-              onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
-              placeholder="Describe this customer segment..."
-              rows={3}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-            />
-          </div>
 
           {/* Method Selection */}
           <div className="bg-gray-50 p-1 rounded-lg flex space-x-1">
@@ -237,12 +243,17 @@ const Segments: React.FC = () => {
 
           {/* Rule Builder or NLP Input */}
           {createMethod === 'manual' ? (
-            <div className="space-y-4">
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
               <RuleBuilder
-                rules={rules}
+                // FIX: Prop name changed from 'rules' to 'initialRules' to match the component's definition.
+                initialRules={rules}
                 onChange={setRules}
               />
-              <AudiencePreview rules={rules} />
+              <AudiencePreview
+                rules={rules}
+                // FIX: The 'isValidRules' prop was missing. We get it from the hook and pass it as a boolean.
+                isValidRules={isValidRules()}
+              />
             </div>
           ) : (
             <NLPQueryInput
@@ -263,7 +274,9 @@ const Segments: React.FC = () => {
             </Button>
             <Button
               onClick={handleCreateSegment}
-              disabled={!formData.name || (createMethod === 'manual' && !isValidRules)}
+              // FIX: Simplified the disabled logic.
+              disabled={!formData.name || (createMethod === 'manual' && !isValidRules())}
+              loading={createMutation.isPending}
               className="bg-primary-600 hover:bg-primary-700"
             >
               Create Segment

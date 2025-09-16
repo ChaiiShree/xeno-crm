@@ -1,5 +1,7 @@
+// frontend/src/components/campaigns/CampaignList.tsx
 import React, { useState } from 'react'
-import { Search, Filter, Plus, Mail } from 'lucide-react'
+// FIX: Removed 'Filter' as it was not being used.
+import { Search, Plus, Mail } from 'lucide-react'
 import { useAPI } from '../../hooks/useAPI'
 import type { Campaign } from '../../types/campaign'
 import CampaignCard from './CampaignCard'
@@ -23,7 +25,7 @@ const CampaignList: React.FC<CampaignListProps> = ({
   const { useCampaigns, useLaunchCampaign } = useAPI()
   const launchMutation = useLaunchCampaign()
 
-  const { data, isLoading } = useCampaigns({
+  const { data, isLoading, isError } = useCampaigns({
     page,
     limit: 12,
     search,
@@ -50,18 +52,23 @@ const CampaignList: React.FC<CampaignListProps> = ({
     )
   }
 
+  if (isError) {
+    return <div className="text-center py-12 text-red-600">Failed to load campaigns.</div>
+  }
+
   const campaigns = data?.campaigns || []
+  const pagination = data?.pagination
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex-1 flex items-center space-x-4 max-w-2xl">
+      <div className="flex items-center justify-between flex-wrap gap-4">
+        <div className="flex-1 flex items-center space-x-4 min-w-[300px]">
           <Input
             placeholder="Search campaigns..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            leftIcon={<Search className="w-4 h-4" />}
+            leftIcon={<Search className="w-4 h-4 text-gray-400" />}
             className="flex-1"
           />
           <select
@@ -108,7 +115,7 @@ const CampaignList: React.FC<CampaignListProps> = ({
           )}
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
           {campaigns.map((campaign: Campaign) => (
             <CampaignCard
               key={campaign.id}
@@ -121,21 +128,21 @@ const CampaignList: React.FC<CampaignListProps> = ({
       )}
 
       {/* Pagination */}
-      {data?.pagination && data.pagination.totalPages > 1 && (
+      {pagination && pagination.totalPages > 1 && (
         <div className="flex justify-center items-center space-x-4">
           <Button
             variant="outline"
-            disabled={page === 1}
+            disabled={!pagination.hasPrevPage}
             onClick={() => setPage(page - 1)}
           >
             Previous
           </Button>
           <span className="text-sm text-gray-600">
-            Page {page} of {data.pagination.totalPages}
+            Page {page} of {pagination.totalPages}
           </span>
           <Button
             variant="outline"
-            disabled={page === data.pagination.totalPages}
+            disabled={!pagination.hasNextPage}
             onClick={() => setPage(page + 1)}
           >
             Next

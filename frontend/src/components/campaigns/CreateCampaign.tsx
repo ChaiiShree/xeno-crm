@@ -1,6 +1,10 @@
+// frontend/src/components/campaigns/CreateCampaign.tsx
 import React, { useState } from 'react'
-import { X, Target, Mail, Sparkles, Users } from 'lucide-react'
+// FIX: Removed 'X' as it was not being used.
+import { Target, Mail, Sparkles, Users } from 'lucide-react'
 import { useAPI } from '../../hooks/useAPI'
+// FIX: Import the Segment type to use for strong typing.
+import type { Segment } from '../../types/segment'
 import type { CreateCampaignRequest } from '../../types/campaign'
 import Button from '../ui/Button'
 import Input from '../ui/Input'
@@ -42,6 +46,8 @@ const CreateCampaign: React.FC<CreateCampaignProps> = ({
   }
 
   const handleSubmit = () => {
+    // The type for mutate is inferred from the useCreateCampaign hook,
+    // which should be (payload: CreateCampaignRequest).
     createMutation.mutate(formData, {
       onSuccess: () => {
         onClose()
@@ -70,7 +76,8 @@ const CreateCampaign: React.FC<CreateCampaignProps> = ({
     })
   }
 
-  const selectedSegment = segments.find(s => s.id === formData.segmentId)
+  // FIX: Added explicit 'Segment' type for the parameter 's'.
+  const selectedSegment = segments.find((s: Segment) => s.id === formData.segmentId)
 
   return (
     <Modal
@@ -78,7 +85,6 @@ const CreateCampaign: React.FC<CreateCampaignProps> = ({
       onClose={handleClose}
       title="Create New Campaign"
       size="lg"
-      className="max-h-[90vh] overflow-y-auto"
     >
       <div className="p-6">
         {/* Progress Steps */}
@@ -122,7 +128,8 @@ const CreateCampaign: React.FC<CreateCampaignProps> = ({
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                   >
                     <option value={0}>Select a segment</option>
-                    {segments.map(segment => (
+                    {/* FIX: Added explicit 'Segment' type for the parameter 'segment'. */}
+                    {segments.map((segment: Segment) => (
                       <option key={segment.id} value={segment.id}>
                         {segment.name} ({segment.audienceSize.toLocaleString()} customers)
                       </option>
@@ -159,7 +166,6 @@ const CreateCampaign: React.FC<CreateCampaignProps> = ({
             <div>
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Campaign Message</h3>
               
-              {/* AI Toggle */}
               <div className="flex items-center space-x-3 mb-6 p-4 bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg border border-purple-100">
                 <input
                   type="checkbox"
@@ -189,14 +195,17 @@ const CreateCampaign: React.FC<CreateCampaignProps> = ({
                   />
                   
                   <MessageGenerator
-                    segmentId={formData.segmentId}
-                    onMessageSelect={(message) => setFormData(prev => ({ ...prev, message }))}
+                    // The error indicates MessageGenerator doesn't accept 'segmentId'.
+                    // The fix is in MessageGenerator.tsx itself. See the note below.
+                    campaignObjective={formData.campaignObjective}
+                    // FIX: Added explicit 'string' type for the parameter 'message'.
+                    onMessageSelect={(message: string) => setFormData(prev => ({ ...prev, message }))}
                   />
                 </div>
               ) : (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Campaign Message
+                    Message
                   </label>
                   <textarea
                     value={formData.message}
@@ -212,7 +221,7 @@ const CreateCampaign: React.FC<CreateCampaignProps> = ({
               )}
 
               {formData.message && (
-                <div className="bg-gray-50 rounded-lg p-4 border">
+                <div className="bg-gray-50 rounded-lg p-4 border mt-4">
                   <h4 className="font-medium text-gray-900 mb-2">Message Preview:</h4>
                   <p className="text-gray-700 text-sm">{formData.message}</p>
                 </div>
@@ -222,9 +231,8 @@ const CreateCampaign: React.FC<CreateCampaignProps> = ({
         )}
 
         {/* Actions */}
-        <div className="flex items-center justify-between pt-6 border-t border-gray-200">
-          <div className="flex space-x-3">
-            {step > 1 && (
+        <div className="flex items-center justify-between pt-6 border-t border-gray-200 mt-6">
+           {step > 1 && (
               <Button
                 variant="outline"
                 onClick={() => setStep(step - 1)}
@@ -232,8 +240,7 @@ const CreateCampaign: React.FC<CreateCampaignProps> = ({
                 Back
               </Button>
             )}
-          </div>
-
+           <div className="flex-grow"></div>
           <div className="flex space-x-3">
             <Button
               variant="ghost"
