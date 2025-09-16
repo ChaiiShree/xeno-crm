@@ -1,10 +1,9 @@
-// frontend/src/pages/Segments.tsx
 import React, { useState } from 'react'
 import { Plus, Search, Target, Sparkles } from 'lucide-react'
 import { useAPI } from '../hooks/useAPI'
 import { useRuleBuilder } from '../hooks/useRuleBuilder'
-// FIX: Import SegmentRules type to use it for state.
-import type { CreateSegmentRequest, Segment, SegmentRules } from '../types/segment'
+// FIX: Import RuleCondition type for better typing
+import type { CreateSegmentRequest, Segment, SegmentRules, RuleCondition } from '../types/segment'
 import Button from '../components/ui/Button'
 import Input from '../components/ui/Input'
 import Modal from '../components/ui/Modal'
@@ -20,8 +19,6 @@ const Segments: React.FC = () => {
   const [formData, setFormData] = useState({
     name: '',
     description: '',
-    // FIX: rules property is part of the form state, but not used here.
-    // The rules state is managed by the useRuleBuilder hook directly.
     nlpQuery: ''
   })
 
@@ -34,7 +31,7 @@ const Segments: React.FC = () => {
     rules,
     setRules,
     resetRules,
-    isValidRules // FIX: Get isValidRules from the hook to pass it down.
+    isValidRules
   } = useRuleBuilder()
 
   const handleCreateSegment = () => {
@@ -46,7 +43,8 @@ const Segments: React.FC = () => {
     if (createMethod === 'manual') {
       payload.rules = rules
     } else {
-      payload.nlpQuery = formData.nlpQuery
+      // For AI method, the rules are already in the 'rules' state
+      payload.rules = rules
     }
 
     createMutation.mutate(payload, {
@@ -57,14 +55,16 @@ const Segments: React.FC = () => {
     })
   }
 
-  // FIX: Added explicit types for the 'segment' parameter.
+  // FIX: Corrected the type for the 'segment' parameter.
   const handleSegmentGenerated = (segment: {
-    conditions: SegmentRules;
+    conditions: RuleCondition[];
     suggestedName?: string;
     explanation?: string;
   }) => {
     console.log('Generated segment:', segment)
-    setRules(segment.conditions || { operator: 'AND', conditions: [] })
+    // FIX: Always wrap the generated conditions in a valid SegmentRules object.
+    setRules({ operator: 'AND', conditions: segment.conditions || [] })
+    
     setFormData(prev => ({ 
       ...prev, 
       name: prev.name || segment.suggestedName || 'AI Generated Segment',
@@ -187,7 +187,7 @@ const Segments: React.FC = () => {
           resetForm()
         }}
         title="Create New Segment"
-        size="2xl" // FIX: Increased modal size for better layout
+        size="2xl"
       >
         <div className="p-6 space-y-6">
           {/* Basic Info */}
@@ -245,13 +245,11 @@ const Segments: React.FC = () => {
           {createMethod === 'manual' ? (
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
               <RuleBuilder
-                // FIX: Prop name changed from 'rules' to 'initialRules' to match the component's definition.
                 initialRules={rules}
                 onChange={setRules}
               />
               <AudiencePreview
                 rules={rules}
-                // FIX: The 'isValidRules' prop was missing. We get it from the hook and pass it as a boolean.
                 isValidRules={isValidRules()}
               />
             </div>
@@ -274,8 +272,7 @@ const Segments: React.FC = () => {
             </Button>
             <Button
               onClick={handleCreateSegment}
-              // FIX: Simplified the disabled logic.
-              disabled={!formData.name || (createMethod === 'manual' && !isValidRules())}
+              disabled={!formData.name || !isValidRules()}
               loading={createMutation.isPending}
               className="bg-primary-600 hover:bg-primary-700"
             >
