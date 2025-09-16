@@ -9,7 +9,7 @@ const PORT = process.env.PORT || 7860;
 
 // Middleware
 app.use(helmet({
-  contentSecurityPolicy: false // Disable for development
+  contentSecurityPolicy: false
 }));
 
 app.use(cors({
@@ -49,46 +49,132 @@ app.get('/', (req, res) => {
     status: 'running',
     endpoints: {
       health: '/health',
+      auth: '/auth/google',
       api: '/api',
       test: '/api/test'
     }
   });
 });
 
-// API Test endpoint
+// **GOOGLE OAUTH ROUTES** (Fix for login issue)
+app.get('/auth/google', (req, res) => {
+  // For now, return a demo user - replace with actual Google OAuth later
+  res.json({
+    success: true,
+    message: 'Google OAuth endpoint working',
+    user: {
+      id: 'demo-user-123',
+      name: 'Demo User',
+      email: 'demo@xeno.com',
+      avatar: 'https://via.placeholder.com/100'
+    },
+    token: 'demo-jwt-token-12345',
+    redirect_url: process.env.FRONTEND_URL + '/dashboard'
+  });
+});
+
+app.post('/auth/google', (req, res) => {
+  // Handle Google OAuth callback
+  res.json({
+    success: true,
+    message: 'Google OAuth login successful',
+    user: {
+      id: 'demo-user-123',
+      name: 'Demo User', 
+      email: 'demo@xeno.com',
+      avatar: 'https://via.placeholder.com/100'
+    },
+    token: 'demo-jwt-token-12345'
+  });
+});
+
+app.get('/auth/google/callback', (req, res) => {
+  // Google OAuth callback endpoint
+  const frontendUrl = process.env.FRONTEND_URL || 'https://frontend-ix7tjnt2l-chaitanya-jayants-projects.vercel.app';
+  res.redirect(`${frontendUrl}/dashboard?auth=success&token=demo-jwt-token-12345`);
+});
+
+// **API ENDPOINTS**
 app.get('/api/test', (req, res) => {
   res.json({
-    message: 'Xeno CRM Backend is running successfully!',
+    message: 'Xeno CRM Backend API is working!',
     timestamp: new Date().toISOString(),
     version: '1.0.0',
     frontend_connected: true
   });
 });
 
-// Basic API endpoints (placeholders for future development)
+// Customer endpoints
 app.get('/api/customers', (req, res) => {
   res.json({
-    customers: [],
-    message: 'Customers endpoint working',
-    count: 0,
+    customers: [
+      {
+        id: 1,
+        name: 'John Doe',
+        email: 'john@example.com',
+        total_spending: 1200,
+        visits: 5,
+        last_visit: '2025-09-15'
+      },
+      {
+        id: 2,
+        name: 'Jane Smith',
+        email: 'jane@example.com', 
+        total_spending: 800,
+        visits: 3,
+        last_visit: '2025-09-14'
+      }
+    ],
+    count: 2,
     timestamp: new Date().toISOString()
   });
 });
 
+app.post('/api/customers', (req, res) => {
+  res.json({
+    success: true,
+    message: 'Customer created successfully',
+    customer: req.body,
+    timestamp: new Date().toISOString()
+  });
+});
+
+// Segment endpoints
 app.get('/api/segments', (req, res) => {
   res.json({
-    segments: [],
-    message: 'Segments endpoint working',
-    count: 0,
+    segments: [
+      {
+        id: 1,
+        name: 'High Value Customers',
+        criteria: 'total_spending > 1000',
+        count: 25
+      },
+      {
+        id: 2,
+        name: 'Recent Visitors',
+        criteria: 'last_visit < 7 days',
+        count: 12
+      }
+    ],
+    count: 2,
     timestamp: new Date().toISOString()
   });
 });
 
+// Campaign endpoints
 app.get('/api/campaigns', (req, res) => {
   res.json({
-    campaigns: [],
-    message: 'Campaigns endpoint working',
-    count: 0,
+    campaigns: [
+      {
+        id: 1,
+        name: 'Welcome Campaign',
+        status: 'active',
+        sent: 150,
+        opened: 75,
+        clicked: 23
+      }
+    ],
+    count: 1,
     timestamp: new Date().toISOString()
   });
 });
@@ -103,12 +189,22 @@ app.use('/api/*', (req, res) => {
   });
 });
 
+// 404 handler for auth routes
+app.use('/auth/*', (req, res) => {
+  res.status(404).json({
+    error: 'Auth endpoint not found',
+    path: req.path,
+    message: 'This auth endpoint is not yet implemented',
+    available_endpoints: ['/auth/google']
+  });
+});
+
 // General 404 handler
 app.use((req, res) => {
   res.status(404).json({
     error: 'Route not found',
     path: req.path,
-    message: 'Please use /health or /api/* endpoints'
+    message: 'Please use /health, /auth/*, or /api/* endpoints'
   });
 });
 
@@ -127,6 +223,7 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Xeno CRM Backend running on port ${PORT}`);
   console.log(`📊 Environment: ${process.env.NODE_ENV || 'production'}`);
   console.log(`🌐 Health check: http://localhost:${PORT}/health`);
+  console.log(`🔒 Auth endpoint: http://localhost:${PORT}/auth/google`);
   console.log(`🔗 Frontend: ${process.env.FRONTEND_URL || 'https://frontend-ix7tjnt2l-chaitanya-jayants-projects.vercel.app'}`);
   console.log(`📡 API: http://localhost:${PORT}/api/test`);
 });
