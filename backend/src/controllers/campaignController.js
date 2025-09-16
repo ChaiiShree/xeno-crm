@@ -3,6 +3,7 @@ const { publishMessage } = require('../config/redis');
 const { generateCampaignMessage, generateCampaignInsights } = require('../services/aiService');
 const { sendCampaign } = require('../services/vendorAPI');
 
+// ... (createCampaign and launchCampaign functions remain the same)
 const createCampaign = async (req, res) => {
   const client = await pool.connect();
   
@@ -12,7 +13,6 @@ const createCampaign = async (req, res) => {
     const { segmentId, name, message, useAI, campaignObjective } = req.body;
     const userId = req.user.id;
 
-    // Validate required fields
     if (!segmentId || !name || (!message && !useAI)) {
       return res.status(400).json({
         success: false,
@@ -20,7 +20,6 @@ const createCampaign = async (req, res) => {
       });
     }
 
-    // Check if segment exists and belongs to user
     const segment = await client.query(
       'SELECT * FROM segments WHERE id = $1 AND created_by = $2',
       [segmentId, userId]
@@ -35,12 +34,11 @@ const createCampaign = async (req, res) => {
 
     let finalMessage = message;
 
-    // Generate AI message if requested
     if (useAI && campaignObjective) {
       try {
         console.log('🤖 Generating AI campaign message for objective:', campaignObjective);
         const aiMessages = await generateCampaignMessage(campaignObjective, segment.rows[0]);
-        finalMessage = aiMessages[0] || message; // Use first generated message or fallback
+        finalMessage = aiMessages[0] || message;
         console.log('✅ AI generated message:', finalMessage);
       } catch (aiError) {
         console.error('❌ AI message generation failed:', aiError);
@@ -53,7 +51,6 @@ const createCampaign = async (req, res) => {
       }
     }
 
-    // Create campaign
     const newCampaign = await client.query(
       `INSERT INTO campaigns (segment_id, name, message, created_by, status)
        VALUES ($1, $2, $3, $4, 'draft') RETURNING *`,
@@ -74,7 +71,8 @@ const createCampaign = async (req, res) => {
     console.error('❌ Create campaign error:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to create campaign'
+      error: 'Failed to create campaign',
+      details: error.message
     });
   } finally {
     client.release();
@@ -90,7 +88,6 @@ const launchCampaign = async (req, res) => {
     const { id } = req.params;
     const userId = req.user.id;
 
-    // Get campaign with segment data
     const campaignData = await client.query(`
       SELECT c.*, s.rules_json, s.audience_size
       FROM campaigns c
@@ -107,14 +104,13 @@ const launchCampaign = async (req, res) => {
 
     const campaign = campaignData.rows[0];
 
-    // Get target customers based on segment rules
     const { evaluateRules } = require('../utils/ruleEngine');
     const targetCustomers = await evaluateRules(
       typeof campaign.rules_json === 'string' 
         ? JSON.parse(campaign.rules_json) 
         : campaign.rules_json,
       null,
-      true // Return customer details
+      true
     );
 
     if (targetCustomers.length === 0) {
@@ -124,13 +120,11 @@ const launchCampaign = async (req, res) => {
       });
     }
 
-    // Update campaign status
     await client.query(
       'UPDATE campaigns SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
       ['active', id]
     );
 
-    // Create communication log entries
     for (const customer of targetCustomers) {
       await client.query(
         `INSERT INTO communication_log (campaign_id, customer_id, status)
@@ -141,7 +135,6 @@ const launchCampaign = async (req, res) => {
 
     await client.query('COMMIT');
 
-    // Publish to Redis for async campaign delivery
     await publishMessage('campaign_delivery', {
       campaignId: id,
       message: campaign.message,
@@ -161,12 +154,14 @@ const launchCampaign = async (req, res) => {
     console.error('❌ Launch campaign error:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to launch campaign'
+      error: 'Failed to launch campaign',
+      details: error.message
     });
   } finally {
     client.release();
   }
 };
+
 
 const getCampaigns = async (req, res) => {
   try {
@@ -191,61 +186,71 @@ const getCampaigns = async (req, res) => {
       WHERE c.created_by = $1
     `;
     let countQuery = 'SELECT COUNT(*) FROM campaigns c WHERE c.created_by = $1';
-    const params = [userId];
+    // FIX: Use a separate params array for the count query to avoid including limit/offset
+    const queryParams = [userId];
+    const countParams = [userId];
     let paramIndex = 2;
 
     if (search) {
+      const searchTerm = `%${search}%`;
       query += ` AND (c.name ILIKE $${paramIndex} OR s.name ILIKE $${paramIndex})`;
       countQuery += ` AND EXISTS (
         SELECT 1 FROM segments s WHERE s.id = c.segment_id 
         AND (c.name ILIKE $${paramIndex} OR s.name ILIKE $${paramIndex})
       )`;
-      params.push(`%${search}%`);
+      queryParams.push(searchTerm);
+      countParams.push(searchTerm);
       paramIndex++;
     }
 
     if (status) {
       query += ` AND c.status = $${paramIndex}`;
       countQuery += ` AND c.status = $${paramIndex}`;
-      params.push(status);
+      queryParams.push(status);
+      countParams.push(status);
       paramIndex++;
     }
 
-    // Add sorting
     const validSortFields = ['name', 'status', 'sent_count', 'failed_count', 'created_at', 'updated_at'];
     const validSortOrders = ['ASC', 'DESC'];
     
-    const sortField = validSortFields.includes(sortBy) ? sortBy : 'created_at';
+    const sortField = validSortFields.includes(sortBy) ? `c.${sortBy}` : 'c.created_at';
     const sortDirection = validSortOrders.includes(sortOrder.toUpperCase()) ? sortOrder.toUpperCase() : 'DESC';
     
-    query += ` ORDER BY c.${sortField} ${sortDirection} LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
-    params.push(parseInt(limit), offset);
+    query += ` ORDER BY ${sortField} ${sortDirection} LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
+    queryParams.push(parseInt(limit), offset);
 
-    const [campaigns, total] = await Promise.all([
-      pool.query(query, params),
-      pool.query(countQuery, params.slice(0, paramIndex - 2))
+    const [campaignsResult, totalResult] = await Promise.all([
+      pool.query(query, queryParams),
+      // FIX: Use the dedicated countParams array for the count query
+      pool.query(countQuery, countParams)
     ]);
+    
+    const total = parseInt(totalResult.rows[0].count);
 
     res.json({
       success: true,
-      campaigns: campaigns.rows,
+      campaigns: campaignsResult.rows,
       pagination: {
-        total: parseInt(total.rows[0].count),
+        total,
         page: parseInt(page),
         limit: parseInt(limit),
-        totalPages: Math.ceil(total.rows[0].count / limit)
+        totalPages: Math.ceil(total / limit)
       }
     });
 
   } catch (error) {
     console.error('❌ Get campaigns error:', error);
+    // FIX: Added detailed error message for better debugging
     res.status(500).json({
       success: false,
-      error: 'Failed to fetch campaigns'
+      error: 'Failed to fetch campaigns',
+      details: error.message
     });
   }
 };
 
+// ... (getCampaignById and other functions remain the same)
 const getCampaignById = async (req, res) => {
   try {
     const { id } = req.params;
@@ -267,7 +272,6 @@ const getCampaignById = async (req, res) => {
       });
     }
 
-    // Get delivery statistics
     const deliveryStats = await pool.query(`
       SELECT 
         status,
@@ -277,11 +281,10 @@ const getCampaignById = async (req, res) => {
       GROUP BY status
     `, [id]);
 
-    // Get recent delivery logs
     const recentLogs = await pool.query(`
-      SELECT cl.*, c.name as customer_name, c.email as customer_email
+      SELECT cl.*, cust.name as customer_name, cust.email as customer_email
       FROM communication_log cl
-      JOIN customers c ON cl.customer_id = c.id
+      JOIN customers cust ON cl.customer_id = cust.id
       WHERE cl.campaign_id = $1
       ORDER BY cl.created_at DESC
       LIMIT 20
@@ -302,7 +305,8 @@ const getCampaignById = async (req, res) => {
     console.error('❌ Get campaign by ID error:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to fetch campaign'
+      error: 'Failed to fetch campaign',
+      details: error.message
     });
   }
 };
@@ -319,7 +323,6 @@ const generateAIMessages = async (req, res) => {
       });
     }
 
-    // Get segment data
     const segment = await pool.query(
       'SELECT * FROM segments WHERE id = $1 AND created_by = $2',
       [segmentId, userId]
@@ -344,7 +347,8 @@ const generateAIMessages = async (req, res) => {
     console.error('❌ Generate AI messages error:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to generate AI messages'
+      error: 'Failed to generate AI messages',
+      details: error.message
     });
   }
 };
@@ -354,7 +358,6 @@ const getCampaignInsights = async (req, res) => {
     const { id } = req.params;
     const userId = req.user.id;
 
-    // Get campaign data
     const campaign = await pool.query(`
       SELECT c.*, s.name as segment_name, s.audience_size
       FROM campaigns c
@@ -369,7 +372,6 @@ const getCampaignInsights = async (req, res) => {
       });
     }
 
-    // Get detailed delivery stats
     const deliveryStats = await pool.query(`
       SELECT 
         status,
@@ -382,7 +384,6 @@ const getCampaignInsights = async (req, res) => {
       GROUP BY status
     `, [id]);
 
-    // Generate AI insights
     const insights = await generateCampaignInsights(campaign.rows[0], deliveryStats.rows);
 
     res.json({
@@ -396,7 +397,8 @@ const getCampaignInsights = async (req, res) => {
     console.error('❌ Get campaign insights error:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to generate campaign insights'
+      error: 'Failed to generate campaign insights',
+      details: error.message
     });
   }
 };
@@ -417,7 +419,6 @@ const updateDeliveryStatus = async (req, res) => {
     try {
       await client.query('BEGIN');
 
-      // Update communication log
       const updateResult = await client.query(
         `UPDATE communication_log 
          SET status = $1, 
@@ -432,7 +433,6 @@ const updateDeliveryStatus = async (req, res) => {
         throw new Error('Communication log entry not found');
       }
 
-      // Update campaign counters
       if (status === 'sent') {
         await client.query(
           'UPDATE campaigns SET sent_count = sent_count + 1 WHERE id = $1',
@@ -463,7 +463,8 @@ const updateDeliveryStatus = async (req, res) => {
     console.error('❌ Update delivery status error:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to update delivery status'
+      error: 'Failed to update delivery status',
+      details: error.message
     });
   }
 };
@@ -472,20 +473,20 @@ const getCampaignStats = async (req, res) => {
   try {
     const userId = req.user.id;
 
-    const stats = await pool.query(`
+    const statsQuery = await pool.query(`
       SELECT 
         COUNT(*) as total_campaigns,
         COUNT(CASE WHEN status = 'active' THEN 1 END) as active_campaigns,
         COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed_campaigns,
         COUNT(CASE WHEN status = 'draft' THEN 1 END) as draft_campaigns,
-        SUM(sent_count) as total_messages_sent,
-        SUM(failed_count) as total_messages_failed,
+        COALESCE(SUM(sent_count), 0) as total_messages_sent,
+        COALESCE(SUM(failed_count), 0) as total_messages_failed,
         COUNT(CASE WHEN created_at >= NOW() - INTERVAL '7 days' THEN 1 END) as campaigns_last_7d
       FROM campaigns
       WHERE created_by = $1
     `, [userId]);
 
-    const recentCampaigns = await pool.query(`
+    const recentCampaignsQuery = await pool.query(`
       SELECT c.name, c.status, c.sent_count, c.failed_count, c.created_at,
              s.name as segment_name
       FROM campaigns c
@@ -497,15 +498,16 @@ const getCampaignStats = async (req, res) => {
 
     res.json({
       success: true,
-      stats: stats.rows[0],
-      recentCampaigns: recentCampaigns.rows
+      stats: statsQuery.rows[0],
+      recentCampaigns: recentCampaignsQuery.rows
     });
 
   } catch (error) {
     console.error('❌ Get campaign stats error:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to fetch campaign statistics'
+      error: 'Failed to fetch campaign statistics',
+      details: error.message
     });
   }
 };

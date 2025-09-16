@@ -11,22 +11,19 @@ class RuleEngine {
     try {
       console.log('🔍 Evaluating rules:', JSON.stringify(rules, null, 2));
 
-      // Validate rules structure
       if (!this.validateRulesStructure(rules)) {
         throw new Error('Invalid rules structure');
       }
 
-      // Check cache first (only for count queries)
       if (!returnCustomers && !limit) {
         const cacheKey = `rules_count:${JSON.stringify(rules)}`;
         const cached = await redisService.get(cacheKey);
         if (cached !== null) {
           console.log('📋 Using cached rule evaluation result:', cached);
-          return cached;
+          return parseInt(cached);
         }
       }
 
-      // Build SQL query
       const { query, params } = this.buildSQLQuery(rules, limit, returnCustomers);
 
       console.log('📝 Generated SQL:', query);
@@ -50,7 +47,6 @@ class RuleEngine {
       } else {
         const count = parseInt(result.rows[0].count);
         
-        // Cache the result for 5 minutes
         if (!limit) {
           const cacheKey = `rules_count:${JSON.stringify(rules)}`;
           await redisService.set(cacheKey, count, 300);
@@ -83,11 +79,10 @@ class RuleEngine {
     }
 
     if (rules.conditions.length === 0) {
-      console.error('❌ Rules must have at least one condition');
-      return false;
+      // Allow empty conditions array for initial state
+      return true;
     }
 
-    // Validate each condition
     for (let i = 0; i < rules.conditions.length; i++) {
       const condition = rules.conditions[i];
       
@@ -101,12 +96,11 @@ class RuleEngine {
         return false;
       }
 
-      if (condition.value === undefined || condition.value === null) {
+      if (condition.value === undefined || condition.value === null || condition.value === '') {
         console.error(`❌ Condition ${i + 1}: Value is required`);
         return false;
       }
 
-      // Validate value type based on field
       if (condition.field === 'total_spend' || condition.field === 'visit_count') {
         if (isNaN(parseFloat(condition.value))) {
           console.error(`❌ Condition ${i + 1}: ${condition.field} requires a numeric value`);
@@ -120,8 +114,9 @@ class RuleEngine {
           return false;
         }
         
-        // Validate date format if it's a string
-        if (typeof condition.value === 'string' && isNaN(Date.parse(condition.value))) {
+        // FIX: Allow relative date strings like "30 days ago" to pass validation
+        const isRelativeDate = /^\d+\s+(day|month|year)s?\s+ago$/i.test(condition.value);
+        if (typeof condition.value === 'string' && !isRelativeDate && isNaN(Date.parse(condition.value))) {
           console.error(`❌ Condition ${i + 1}: Invalid date format`);
           return false;
         }
@@ -140,30 +135,33 @@ class RuleEngine {
     const params = [];
     let paramIndex = 1;
 
-    // Build WHERE clause
+    if (rules.conditions.length === 0) {
+      return { query: returnCustomers ? `${query} WHERE 1 = 0` : 'SELECT 0 as count', params: [] };
+    }
+    
     const conditions = [];
     
     for (const condition of rules.conditions) {
       let sqlCondition;
       let value = condition.value;
+      let field = `customers.${condition.field}`; // Qualify column names
 
-      // Handle different field types
       if (condition.field === 'last_visit') {
-        // Convert relative dates to absolute dates
-        if (typeof value === 'string' && value.includes('days ago')) {
-          const daysAgo = parseInt(value.match(/(\d+)/)[1]);
-          value = new Date(Date.now() - (daysAgo * 24 * 60 * 60 * 1000)).toISOString().split('T')[0];
-        } else if (typeof value === 'string' && value.includes('months ago')) {
-          const monthsAgo = parseInt(value.match(/(\d+)/)[1]);
-          const date = new Date();
-          date.setMonth(date.getMonth() - monthsAgo);
-          value = date.toISOString().split('T')[0];
+        const relativeDateMatch = String(value).match(/(\d+)\s+(day|month|year)s?\s+ago/i);
+        if (relativeDateMatch) {
+          const num = parseInt(relativeDateMatch[1]);
+          const unit = relativeDateMatch[2].toLowerCase();
+          sqlCondition = `${field} ${condition.operator} (CURRENT_DATE - INTERVAL '${num} ${unit}')`;
+        } else {
+          sqlCondition = `${field} ${condition.operator} $${paramIndex}`;
+          params.push(value);
+          paramIndex++;
         }
+      } else {
+        sqlCondition = `${field} ${condition.operator} $${paramIndex}`;
+        params.push(value);
+        paramIndex++;
       }
-
-      sqlCondition = `${condition.field} ${condition.operator} $${paramIndex}`;
-      params.push(value);
-      paramIndex++;
 
       conditions.push(sqlCondition);
     }
@@ -173,25 +171,22 @@ class RuleEngine {
       query += ` WHERE ${conditions.join(operator)}`;
     }
 
-    // Add ordering for customer results
     if (returnCustomers) {
       query += ' ORDER BY total_spend DESC, visit_count DESC';
     }
 
-    // Add limit if specified
     if (limit) {
-      query += ` LIMIT ${parseInt(limit)}`;
+      query += ` LIMIT $${paramIndex}`;
+      params.push(parseInt(limit));
     }
 
     return { query, params };
   }
 
+  // ... (rest of the RuleEngine class remains the same)
   async previewRules(rules, sampleSize = 10) {
     try {
-      // Get sample customers
       const customers = await this.evaluateRules(rules, sampleSize, true);
-      
-      // Get total count
       const totalCount = await this.evaluateRules(rules, null, false);
 
       return {
@@ -208,7 +203,6 @@ class RuleEngine {
 
   async validateCustomerAgainstRules(customerId, rules) {
     try {
-      // Get customer data
       const customer = await pool.query(
         'SELECT * FROM customers WHERE id = $1',
         [customerId]
@@ -220,7 +214,6 @@ class RuleEngine {
 
       const customerData = customer.rows[0];
 
-      // Check each condition
       const results = [];
       
       for (const condition of rules.conditions) {
@@ -263,7 +256,6 @@ class RuleEngine {
         });
       }
 
-      // Apply AND/OR logic
       const finalMatch = rules.operator.toUpperCase() === 'AND' 
         ? results.every(r => r.matches)
         : results.some(r => r.matches);
@@ -282,11 +274,9 @@ class RuleEngine {
 
   async getSegmentOverlap(rules1, rules2) {
     try {
-      // Get customers for each rule set
       const customers1 = await this.evaluateRules(rules1, null, true);
       const customers2 = await this.evaluateRules(rules2, null, true);
 
-      // Find overlap
       const customerIds1 = new Set(customers1.map(c => c.id));
       const customerIds2 = new Set(customers2.map(c => c.id));
 
@@ -343,10 +333,11 @@ class RuleEngine {
   }
 }
 
-module.exports = new RuleEngine();
+const ruleEngine = new RuleEngine();
 
-// Export the evaluateRules function for backward compatibility
-module.exports.evaluateRules = async (rules, limit = null, returnCustomers = false) => {
-  const engine = new RuleEngine();
-  return await engine.evaluateRules(rules, limit, returnCustomers);
+module.exports = ruleEngine;
+
+// Export the evaluateRules function for backward compatibility with controllers
+module.exports.evaluateRules = (rules, limit = null, returnCustomers = false) => {
+  return ruleEngine.evaluateRules(rules, limit, returnCustomers);
 };

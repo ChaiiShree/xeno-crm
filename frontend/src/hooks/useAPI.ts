@@ -16,7 +16,8 @@ export const useAPI = () => {
   const useCustomerStats = () => {
     return useQuery({
       queryKey: ['customer-stats'],
-      queryFn: () => apiService.getCustomerStats(),
+      // FIX: Changed path from '/stats/customers' to the correct '/customers/stats'
+      queryFn: () => apiService.get('/customers/stats'),
     })
   }
 
@@ -50,7 +51,8 @@ export const useAPI = () => {
   const useSegmentStats = () => {
     return useQuery({
       queryKey: ['segment-stats'],
-      queryFn: () => apiService.getSegmentStats(),
+      // FIX: Changed path from '/stats/segments' to the correct '/segments/stats'
+      queryFn: () => apiService.get('/segments/stats'),
     })
   }
 
@@ -113,7 +115,8 @@ export const useAPI = () => {
   const useCampaignStats = () => {
     return useQuery({
       queryKey: ['campaign-stats'],
-      queryFn: () => apiService.getCampaignStats(),
+      // FIX: Changed path from '/stats/campaigns' to the correct '/campaigns/stats'
+      queryFn: () => apiService.get('/campaigns/stats'),
     })
   }
 
