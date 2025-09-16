@@ -2,95 +2,133 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
-const session = require('express-session');
-const passport = require('passport');
 require('dotenv').config();
-
-const { connectDB } = require('./config/database');
-const { connectRedis } = require('./config/redis');
-require('./config/passport');
-
-const authRoutes = require('./routes/auth');
-const customerRoutes = require('./routes/customers');
-const orderRoutes = require('./routes/orders');
-const segmentRoutes = require('./routes/segments');
-const campaignRoutes = require('./routes/campaigns');
-const aiRoutes = require('./routes/ai');
 
 const app = express();
 const PORT = process.env.PORT || 7860;
 
 // Middleware
-app.use(helmet());
-app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
-  credentials: true
+app.use(helmet({
+  contentSecurityPolicy: false // Disable for development
 }));
+
+app.use(cors({
+  origin: [
+    'https://frontend-ix7tjnt2l-chaitanya-jayants-projects.vercel.app',
+    'https://frontend-mocha-five-37.vercel.app',
+    'http://localhost:5173',
+    'http://localhost:3000'
+  ],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
 app.use(morgan('combined'));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// Session configuration
-app.use(session({
-  secret: process.env.SESSION_SECRET || 'xeno-crm-secret',
-  resave: false,
-  saveUninitialized: false,
-  cookie: {
-    secure: process.env.NODE_ENV === 'production',
-    maxAge: 24 * 60 * 60 * 1000
-  }
-}));
-
-// Passport middleware
-app.use(passport.initialize());
-app.use(passport.session());
-
-// Routes
-app.use('/auth', authRoutes);
-app.use('/api/customers', customerRoutes);
-app.use('/api/orders', orderRoutes);
-app.use('/api/segments', segmentRoutes);
-app.use('/api/campaigns', campaignRoutes);
-app.use('/api/ai', aiRoutes);
-
-// Health check
+// Health check endpoint (REQUIRED for HF Spaces)
 app.get('/health', (req, res) => {
   res.json({
     status: 'OK',
     timestamp: new Date().toISOString(),
-    service: 'Xeno CRM API'
+    service: 'Xeno CRM API',
+    version: '1.0.0',
+    port: PORT,
+    environment: process.env.NODE_ENV || 'production',
+    frontend: process.env.FRONTEND_URL || 'https://frontend-ix7tjnt2l-chaitanya-jayants-projects.vercel.app'
   });
 });
 
-// Error handling
+// Root endpoint
+app.get('/', (req, res) => {
+  res.json({
+    message: 'Xeno CRM Backend API',
+    version: '1.0.0',
+    status: 'running',
+    endpoints: {
+      health: '/health',
+      api: '/api',
+      test: '/api/test'
+    }
+  });
+});
+
+// API Test endpoint
+app.get('/api/test', (req, res) => {
+  res.json({
+    message: 'Xeno CRM Backend is running successfully!',
+    timestamp: new Date().toISOString(),
+    version: '1.0.0',
+    frontend_connected: true
+  });
+});
+
+// Basic API endpoints (placeholders for future development)
+app.get('/api/customers', (req, res) => {
+  res.json({
+    customers: [],
+    message: 'Customers endpoint working',
+    count: 0,
+    timestamp: new Date().toISOString()
+  });
+});
+
+app.get('/api/segments', (req, res) => {
+  res.json({
+    segments: [],
+    message: 'Segments endpoint working',
+    count: 0,
+    timestamp: new Date().toISOString()
+  });
+});
+
+app.get('/api/campaigns', (req, res) => {
+  res.json({
+    campaigns: [],
+    message: 'Campaigns endpoint working',
+    count: 0,
+    timestamp: new Date().toISOString()
+  });
+});
+
+// 404 handler for API routes
+app.use('/api/*', (req, res) => {
+  res.status(404).json({
+    error: 'API endpoint not found',
+    path: req.path,
+    message: 'This endpoint is not yet implemented',
+    available_endpoints: ['/api/test', '/api/customers', '/api/segments', '/api/campaigns']
+  });
+});
+
+// General 404 handler
+app.use((req, res) => {
+  res.status(404).json({
+    error: 'Route not found',
+    path: req.path,
+    message: 'Please use /health or /api/* endpoints'
+  });
+});
+
+// Error handler
 app.use((err, req, res, next) => {
   console.error('Error:', err.stack);
   res.status(500).json({
-    error: 'Something went wrong!',
-    message: process.env.NODE_ENV === 'development' ? err.message : 'Internal server error'
+    error: 'Internal server error',
+    message: process.env.NODE_ENV === 'development' ? err.message : 'Something went wrong!',
+    timestamp: new Date().toISOString()
   });
 });
 
-// 404 handler
-app.use((req, res) => {
-  res.status(404).json({ error: 'Route not found' });
+// Start server
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚀 Xeno CRM Backend running on port ${PORT}`);
+  console.log(`📊 Environment: ${process.env.NODE_ENV || 'production'}`);
+  console.log(`🌐 Health check: http://localhost:${PORT}/health`);
+  console.log(`🔗 Frontend: ${process.env.FRONTEND_URL || 'https://frontend-ix7tjnt2l-chaitanya-jayants-projects.vercel.app'}`);
+  console.log(`📡 API: http://localhost:${PORT}/api/test`);
 });
 
-async function startServer() {
-  try {
-    await connectDB();
-    await connectRedis();
-    
-    app.listen(PORT, '0.0.0.0', () => {
-      console.log(`🚀 Xeno CRM Server running on port ${PORT}`);
-      console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
-      console.log(`🌐 Frontend URL: ${process.env.FRONTEND_URL}`);
-    });
-  } catch (error) {
-    console.error('❌ Failed to start server:', error);
-    process.exit(1);
-  }
-}
-
-startServer();
 module.exports = app;

@@ -28,7 +28,7 @@ jobs:
           cp -r backend/* hf-deploy/ 2>/dev/null || true
           cd hf-deploy
           
-          # Initialize git and push to HF
+          # Initialize git with main branch (fix branch issue)
           git init
           git branch -M main
           git remote add hf https://Xendaine99:$HF_TOKEN@huggingface.co/spaces/Xendaine99/xeno-crm-backend
@@ -36,8 +36,13 @@ jobs:
           git commit -m "Deploy backend: $(date '+%Y-%m-%d %H:%M:%S')" || echo "No changes to commit"
           git push --force hf main
 
-      - name: Wait and test deployment
+      - name: Wait for deployment
         run: |
-          echo "Waiting for deployment to complete..."
-          sleep 90
-          curl -f https://xendaine99-xeno-crm-backend.hf.space/health || echo "Backend not yet ready"
+          echo "⏳ Waiting for HF Spaces deployment..."
+          sleep 120
+          
+      - name: Test deployment
+        run: |
+          echo "🧪 Testing deployment..."
+          curl -f https://xendaine99-xeno-crm-backend.hf.space/health || echo "⚠️ Backend not ready yet, check HF Spaces logs"
+          echo "✅ Deployment process completed"

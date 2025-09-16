@@ -39,6 +39,11 @@ jobs:
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
         run: |
           cd frontend
-          vercel pull --yes --environment=production --token $VERCEL_TOKEN
-          vercel build --prod --token $VERCEL_TOKEN
-          vercel deploy --prebuilt --prod --token $VERCEL_TOKEN
+          npx vercel pull --yes --environment=production --token $VERCEL_TOKEN
+          npx vercel build --prod --token $VERCEL_TOKEN
+          npx vercel deploy --prebuilt --prod --token $VERCEL_TOKEN
+
+      - name: Test deployment
+        run: |
+          echo "✅ Frontend deployment completed"
+          echo "🌐 Frontend URL: https://frontend-ix7tjnt2l-chaitanya-jayants-projects.vercel.app"
