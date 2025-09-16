@@ -1,7 +1,7 @@
 {
   "name": "xeno-crm-backend",
   "version": "1.0.0",
-  "description": "AI-powered CRM backend for HF Spaces",
+  "description": "AI-powered CRM backend for Hugging Face Spaces",
   "main": "app.js",
   "scripts": {
     "start": "node src/app.js",
@@ -12,7 +12,17 @@
     "cors": "^2.8.5",
     "helmet": "^7.0.0",
     "morgan": "^1.10.0",
-    "dotenv": "^16.3.1"
+    "dotenv": "^16.3.1",
+    "express-session": "^1.17.3",
+    "passport": "^0.6.0",
+    "passport-google-oauth20": "^2.0.0",
+    "pg": "^8.11.0",
+    "redis": "^4.6.7",
+    "@upstash/redis": "^1.22.0",
+    "axios": "^1.4.0",
+    "jsonwebtoken": "^9.0.1",
+    "bcryptjs": "^2.4.3",
+    "@google/generative-ai": "^0.15.0"
   },
   "engines": {
     "node": "18.x"
