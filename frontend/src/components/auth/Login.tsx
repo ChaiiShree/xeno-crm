@@ -16,8 +16,11 @@ const Login: React.FC = () => {
       createdAt: new Date().toISOString()
     }
     
-    authService.handleAuthSuccess(demoUser)
-    window.location.reload()
+    // FIX: Changed handleAuthSuccess to the new handleDemoLogin method.
+    authService.handleDemoLogin(demoUser)
+
+    // FIX: Redirect to the dashboard instead of reloading the page.
+    window.location.href = '/'
   }
 
   const features = [
