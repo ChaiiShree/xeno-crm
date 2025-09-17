@@ -7,259 +7,163 @@ const createSegment = async (req, res) => {
   
   try {
     await client.query('BEGIN');
-    
+
     const { name, description, rules, nlpQuery } = req.body;
     const userId = req.user.id;
 
-    // Enhanced validation
-    if (!name || typeof name !== 'string' || !name.trim()) {
+    if (!name || (!rules && !nlpQuery)) {
       return res.status(400).json({
         success: false,
-        error: 'Segment name is required and must be a non-empty string'
-      });
-    }
-
-    if (name.trim().length > 100) {
-      return res.status(400).json({
-        success: false,
-        error: 'Segment name must be 100 characters or less'
-      });
-    }
-
-    if (description && description.length > 500) {
-      return res.status(400).json({
-        success: false,
-        error: 'Description must be 500 characters or less'
-      });
-    }
-
-    if (!rules && !nlpQuery) {
-      return res.status(400).json({
-        success: false,
-        error: 'Either rules or natural language query is required'
+        error: 'Name and either rules or natural language query are required'
       });
     }
 
     let finalRules = rules;
 
-    // Handle AI-generated rules
-    if (nlpQuery && !rules) {
-      try {
+    // In segmentController.js - around line where AI generates rules
+// In segmentController.js - after AI generates rules
+if (nlpQuery && !rules) {
+    try {
         console.log('🤖 Converting NLP query to rules:', nlpQuery);
-        const aiResponse = await generateSegmentFromNLP(nlpQuery);
+        finalRules = await generateSegmentFromNLP(nlpQuery);
+        console.log('✅ AI generated rules (before mapping):', JSON.stringify(finalRules, null, 2));
         
-        if (aiResponse && aiResponse.rules) {
-          finalRules = aiResponse.rules;
-        } else {
-          return res.status(400).json({
-            success: false,
-            error: 'Failed to generate rules from natural language query'
-          });
+        // ADD THIS FIELD MAPPING
+        if (finalRules && finalRules.conditions) {
+            finalRules.conditions = finalRules.conditions.map(condition => {
+                // Map frontend field names to database field names
+                const fieldMapping = {
+                    'totalSpend': 'total_spend',
+                    'lastOrderDate': 'last_visit',
+                    'visitCount': 'visit_count'
+                };
+                
+                return {
+                    ...condition,
+                    field: fieldMapping[condition.field] || condition.field
+                };
+            });
         }
         
-        console.log('✅ AI generated rules:', JSON.stringify(finalRules, null, 2));
-      } catch (aiError) {
-        console.error('❌ AI generation failed:', aiError);
+        console.log('✅ AI generated rules (after mapping):', JSON.stringify(finalRules, null, 2));
+        
+    } catch (aiError) {
+        console.error('❌ AI conversion failed:', aiError);
         return res.status(400).json({
-          success: false,
-          error: 'Failed to process natural language query. Please try manual rules instead.'
+            success: false,
+            error: 'Failed to convert natural language query to rules'
         });
-      }
     }
+}
 
-    // Enhanced rules validation
-    if (!finalRules || typeof finalRules !== 'object') {
+
+    if (!finalRules || !finalRules.conditions || !Array.isArray(finalRules.conditions)) {
       return res.status(400).json({
         success: false,
-        error: 'Rules must be a valid object'
+        error: 'Invalid rules structure'
       });
     }
 
-    if (!finalRules.operator || !['AND', 'OR'].includes(finalRules.operator)) {
-      return res.status(400).json({
-        success: false,
-        error: 'Rules operator must be "AND" or "OR"'
-      });
-    }
+    const audienceSize = await evaluateRules(finalRules);
 
-    if (!finalRules.conditions || !Array.isArray(finalRules.conditions)) {
-      return res.status(400).json({
-        success: false,
-        error: 'Rules conditions must be an array'
-      });
-    }
-
-    if (finalRules.conditions.length === 0) {
-      return res.status(400).json({
-        success: false,
-        error: 'At least one rule condition is required'
-      });
-    }
-
-    if (finalRules.conditions.length > 10) {
-      return res.status(400).json({
-        success: false,
-        error: 'Maximum 10 rule conditions allowed'
-      });
-    }
-
-    // Validate each condition
-    const validFields = ['totalSpend', 'visitCount', 'lastVisit', 'createdAt', 'name', 'email'];
-    for (let i = 0; i < finalRules.conditions.length; i++) {
-      const condition = finalRules.conditions[i];
-      
-      if (!condition.field || !validFields.includes(condition.field)) {
-        return res.status(400).json({
-          success: false,
-          error: `Condition ${i + 1}: Invalid field "${condition.field}"`
-        });
-      }
-      
-      if (!condition.operator) {
-        return res.status(400).json({
-          success: false,
-          error: `Condition ${i + 1}: Operator is required`
-        });
-      }
-      
-      if (condition.value === undefined || condition.value === null || condition.value === '') {
-        return res.status(400).json({
-          success: false,
-          error: `Condition ${i + 1}: Value is required`
-        });
-      }
-    }
-
-    // Calculate audience size with error handling
-    let audienceSize = 0;
-    try {
-      console.log('📊 Calculating audience size for rules:', JSON.stringify(finalRules, null, 2));
-      audienceSize = await evaluateRules(finalRules);
-      
-      if (typeof audienceSize !== 'number' || isNaN(audienceSize) || audienceSize < 0) {
-        console.warn('⚠️ Invalid audience size, defaulting to 0');
-        audienceSize = 0;
-      }
-      
-      console.log('✅ Calculated audience size:', audienceSize);
-    } catch (evaluationError) {
-      console.error('❌ Error calculating audience size:', evaluationError);
-      // Don't fail the segment creation, just set audience size to 0
-      audienceSize = 0;
-    }
-
-    // FIX: Use consistent camelCase column names that match your database schema
-    const result = await client.query(
-      `INSERT INTO segments (name, description, rulesJson, createdBy, audienceSize) 
-       VALUES ($1, $2, $3, $4, $5) 
-       RETURNING *`,
-      [
-        name.trim(),
-        description?.trim() || '',
-        JSON.stringify(finalRules),
-        userId,
-        audienceSize
-      ]
+    const newSegment = await client.query(
+      `INSERT INTO segments (name, description, rules_json, created_by, audience_size)
+       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+      [name, description, JSON.stringify(finalRules), userId, audienceSize]
     );
 
     await client.query('COMMIT');
-    
-    const newSegment = result.rows[0];
-    
-    // FIX: Return response structure that matches frontend expectations
+
+    console.log('✅ Segment created:', name, 'Audience size:', audienceSize);
     res.status(201).json({
       success: true,
-      data: {
-        id: newSegment.id,
-        name: newSegment.name,
-        description: newSegment.description,
-        rules: finalRules,
-        audienceSize: newSegment.audiencesize,
-        createdAt: newSegment.createdat,
-        updatedAt: newSegment.updatedat
+      message: 'Segment created successfully',
+      segment: {
+        ...newSegment.rows[0],
+        rules_json: finalRules,
+        nlp_query: nlpQuery || null
       }
     });
 
   } catch (error) {
     await client.query('ROLLBACK');
-    console.error('❌ Error creating segment:', error);
-    
-    // Send user-friendly error message
-    const errorMessage = error.message || 'An unexpected error occurred while creating the segment';
-    
+    console.error('❌ Create segment error:', error);
+    // FIX: Send a more detailed error message back to the frontend for debugging.
     res.status(500).json({
       success: false,
-      error: errorMessage
+      error: 'Failed to create segment due to an internal error.',
+      details: error.message 
     });
   } finally {
     client.release();
   }
 };
 
+// ... (The rest of your file remains exactly the same)
+// ... (getSegments, getSegmentById, previewAudience, etc.)
+
 const getSegments = async (req, res) => {
   try {
-    const userId = req.user.id;
-    const { page = 1, limit = 10, search = '' } = req.query;
-    
+    const { 
+      page = 1, 
+      limit = 10, 
+      search = '',
+      sortBy = 'created_at',
+      sortOrder = 'DESC'
+    } = req.query;
+
     const offset = (parseInt(page) - 1) * parseInt(limit);
-    
+    const userId = req.user.id;
+
     let query = `
-      SELECT s.*, u.name as createdByName, u.email as createdByEmail
+      SELECT s.*, u.name as created_by_name, u.email as created_by_email
       FROM segments s
-      LEFT JOIN users u ON s.createdBy = u.id
-      WHERE s.createdBy = $1
+      LEFT JOIN users u ON s.created_by = u.id
+      WHERE s.created_by = $1
     `;
-    
+    let countQuery = 'SELECT COUNT(*) FROM segments WHERE created_by = $1';
     const params = [userId];
-    
+
     if (search) {
-      query += ` AND (s.name ILIKE $${params.length + 1} OR s.description ILIKE $${params.length + 1})`;
+      query += ' AND (s.name ILIKE $2 OR s.description ILIKE $2)';
+      countQuery += ' AND (name ILIKE $2 OR description ILIKE $2)';
       params.push(`%${search}%`);
     }
+
+    const validSortFields = ['name', 'audience_size', 'created_at', 'updated_at'];
+    const validSortOrders = ['ASC', 'DESC'];
     
-    query += ` ORDER BY s.createdAt DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+    const sortField = validSortFields.includes(sortBy) ? sortBy : 'created_at';
+    const sortDirection = validSortOrders.includes(sortOrder.toUpperCase()) ? sortOrder.toUpperCase() : 'DESC';
+    
+    query += ` ORDER BY s.${sortField} ${sortDirection} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
     params.push(parseInt(limit), offset);
-    
-    const result = await pool.query(query, params);
-    
-    const segments = result.rows.map(row => ({
-      id: row.id,
-      name: row.name,
-      description: row.description,
-      rules: typeof row.rulesjson === 'string' ? JSON.parse(row.rulesjson) : row.rulesjson,
-      audienceSize: row.audiencesize,
-      createdAt: row.createdat,
-      updatedAt: row.updatedat,
-      creator: {
-        name: row.createdbyname,
-        email: row.createdbyemail
-      }
+
+    const [segments, total] = await Promise.all([
+      pool.query(query, params),
+      pool.query(countQuery, search ? [userId, `%${search}%`] : [userId])
+    ]);
+
+    const segmentsWithParsedRules = segments.rows.map(segment => ({
+      ...segment,
+      rules_json: typeof segment.rules_json === 'string' 
+        ? JSON.parse(segment.rules_json) 
+        : segment.rules_json
     }));
-    
-    // Get total count
-    const countQuery = `
-      SELECT COUNT(*) 
-      FROM segments s 
-      WHERE s.createdBy = $1 ${search ? `AND (s.name ILIKE $2 OR s.description ILIKE $2)` : ''}
-    `;
-    const countParams = search ? [userId, `%${search}%`] : [userId];
-    const countResult = await pool.query(countQuery, countParams);
-    const totalCount = parseInt(countResult.rows[0].count);
-    
+
     res.json({
       success: true,
-      data: {
-        segments,
-        pagination: {
-          page: parseInt(page),
-          limit: parseInt(limit),
-          total: totalCount,
-          pages: Math.ceil(totalCount / parseInt(limit))
-        }
+      segments: segmentsWithParsedRules,
+      pagination: {
+        total: parseInt(total.rows[0].count),
+        page: parseInt(page),
+        limit: parseInt(limit),
+        totalPages: Math.ceil(total.rows[0].count / limit)
       }
     });
+
   } catch (error) {
-    console.error('Error fetching segments:', error);
+    console.error('❌ Get segments error:', error);
     res.status(500).json({
       success: false,
       error: 'Failed to fetch segments'
@@ -272,42 +176,35 @@ const getSegmentById = async (req, res) => {
     const { id } = req.params;
     const userId = req.user.id;
 
-    const result = await pool.query(
-      `SELECT s.*, u.name as createdByName, u.email as createdByEmail
+    const segment = await pool.query(
+      `SELECT s.*, u.name as created_by_name, u.email as created_by_email
        FROM segments s
-       LEFT JOIN users u ON s.createdBy = u.id
-       WHERE s.id = $1 AND s.createdBy = $2`,
+       LEFT JOIN users u ON s.created_by = u.id
+       WHERE s.id = $1 AND s.created_by = $2`,
       [id, userId]
     );
 
-    if (result.rows.length === 0) {
+    if (segment.rows.length === 0) {
       return res.status(404).json({
         success: false,
         error: 'Segment not found'
       });
     }
 
-    const segment = result.rows[0];
     const segmentData = {
-      id: segment.id,
-      name: segment.name,
-      description: segment.description,
-      rules: typeof segment.rulesjson === 'string' ? JSON.parse(segment.rulesjson) : segment.rulesjson,
-      audienceSize: segment.audiencesize,
-      createdAt: segment.createdat,
-      updatedAt: segment.updatedat,
-      creator: {
-        name: segment.createdbyname,
-        email: segment.createdbyemail
-      }
+      ...segment.rows[0],
+      rules_json: typeof segment.rows[0].rules_json === 'string' 
+        ? JSON.parse(segment.rows[0].rules_json) 
+        : segment.rows[0].rules_json
     };
 
     res.json({
       success: true,
-      data: segmentData
+      segment: segmentData
     });
+
   } catch (error) {
-    console.error('Error fetching segment by ID:', error);
+    console.error('❌ Get segment by ID error:', error);
     res.status(500).json({
       success: false,
       error: 'Failed to fetch segment'
@@ -330,10 +227,9 @@ const previewAudience = async (req, res) => {
 
     if (nlpQuery && !rules) {
       try {
-        const aiResponse = await generateSegmentFromNLP(nlpQuery);
-        finalRules = aiResponse.rules;
+        finalRules = await generateSegmentFromNLP(nlpQuery);
       } catch (aiError) {
-        console.error('AI conversion failed:', aiError);
+        console.error('❌ AI conversion failed:', aiError);
         return res.status(400).json({
           success: false,
           error: 'Failed to convert natural language query to rules'
@@ -341,29 +237,18 @@ const previewAudience = async (req, res) => {
       }
     }
 
-    // Validate rules structure
-    if (!finalRules || !finalRules.conditions || !Array.isArray(finalRules.conditions)) {
-      return res.status(400).json({
-        success: false,
-        error: 'Invalid rules structure'
-      });
-    }
-
     const audienceSize = await evaluateRules(finalRules);
-    
-    // Get sample customers
     const sampleCustomers = await evaluateRules(finalRules, 10, true);
 
     res.json({
       success: true,
-      data: {
-        audienceSize,
-        sampleCustomers,
-        rules: finalRules
-      }
+      audienceSize,
+      sampleCustomers,
+      rules: finalRules
     });
+
   } catch (error) {
-    console.error('Error previewing audience:', error);
+    console.error('❌ Preview audience error:', error);
     res.status(500).json({
       success: false,
       error: 'Failed to preview audience'
@@ -376,14 +261,13 @@ const updateSegment = async (req, res) => {
   
   try {
     await client.query('BEGIN');
-    
+
     const { id } = req.params;
     const { name, description, rules } = req.body;
     const userId = req.user.id;
 
-    // Check if segment exists and belongs to user
     const existingSegment = await client.query(
-      'SELECT id FROM segments WHERE id = $1 AND createdBy = $2',
+      'SELECT id FROM segments WHERE id = $1 AND created_by = $2',
       [id, userId]
     );
 
@@ -411,57 +295,55 @@ const updateSegment = async (req, res) => {
 
     if (name !== undefined) {
       updateFields.push(`name = $${paramIndex}`);
-      updateValues.push(name.trim());
+      updateValues.push(name);
       paramIndex++;
     }
 
     if (description !== undefined) {
       updateFields.push(`description = $${paramIndex}`);
-      updateValues.push(description.trim());
+      updateValues.push(description);
       paramIndex++;
     }
 
     if (rules !== undefined) {
-      updateFields.push(`rulesJson = $${paramIndex}`);
+      updateFields.push(`rules_json = $${paramIndex}`);
       updateValues.push(JSON.stringify(rules));
       paramIndex++;
-      
-      updateFields.push(`audienceSize = $${paramIndex}`);
+
+      updateFields.push(`audience_size = $${paramIndex}`);
       updateValues.push(audienceSize);
       paramIndex++;
     }
 
-    updateFields.push(`updatedAt = CURRENT_TIMESTAMP`);
+    updateFields.push(`updated_at = CURRENT_TIMESTAMP`);
+    updateValues.push(id);
 
     const updateQuery = `
-      UPDATE segments
+      UPDATE segments 
       SET ${updateFields.join(', ')}
-      WHERE id = $${paramIndex} AND createdBy = $${paramIndex + 1}
+      WHERE id = $${paramIndex} AND created_by = $${paramIndex + 1}
       RETURNING *
     `;
-    
-    updateValues.push(id, userId);
+    updateValues.push(userId);
 
-    const result = await client.query(updateQuery, updateValues);
+    const updatedSegment = await client.query(updateQuery, updateValues);
+
     await client.query('COMMIT');
 
-    const updatedSegment = result.rows[0];
-    
     res.json({
       success: true,
-      data: {
-        id: updatedSegment.id,
-        name: updatedSegment.name,
-        description: updatedSegment.description,
-        rules: typeof updatedSegment.rulesjson === 'string' ? JSON.parse(updatedSegment.rulesjson) : updatedSegment.rulesjson,
-        audienceSize: updatedSegment.audiencesize,
-        createdAt: updatedSegment.createdat,
-        updatedAt: updatedSegment.updatedat
+      message: 'Segment updated successfully',
+      segment: {
+        ...updatedSegment.rows[0],
+        rules_json: typeof updatedSegment.rows[0].rules_json === 'string' 
+          ? JSON.parse(updatedSegment.rows[0].rules_json) 
+          : updatedSegment.rows[0].rules_json
       }
     });
+
   } catch (error) {
     await client.query('ROLLBACK');
-    console.error('Error updating segment:', error);
+    console.error('❌ Update segment error:', error);
     res.status(500).json({
       success: false,
       error: 'Failed to update segment'
@@ -476,12 +358,12 @@ const deleteSegment = async (req, res) => {
     const { id } = req.params;
     const userId = req.user.id;
 
-    const result = await pool.query(
-      'DELETE FROM segments WHERE id = $1 AND createdBy = $2 RETURNING *',
+    const deletedSegment = await pool.query(
+      'DELETE FROM segments WHERE id = $1 AND created_by = $2 RETURNING *',
       [id, userId]
     );
 
-    if (result.rows.length === 0) {
+    if (deletedSegment.rows.length === 0) {
       return res.status(404).json({
         success: false,
         error: 'Segment not found'
@@ -492,8 +374,9 @@ const deleteSegment = async (req, res) => {
       success: true,
       message: 'Segment deleted successfully'
     });
+
   } catch (error) {
-    console.error('Error deleting segment:', error);
+    console.error('❌ Delete segment error:', error);
     res.status(500).json({
       success: false,
       error: 'Failed to delete segment'
@@ -505,38 +388,32 @@ const getSegmentStats = async (req, res) => {
   try {
     const userId = req.user.id;
 
-    const statsQuery = `
-      SELECT
+    const stats = await pool.query(`
+      SELECT 
         COUNT(*) as total_segments,
-        AVG(audienceSize) as avg_audience_size,
-        SUM(audienceSize) as total_audience_reach,
-        COUNT(CASE WHEN createdAt >= NOW() - INTERVAL '7 days' THEN 1 END) as segments_last_7d
+        AVG(audience_size) as avg_audience_size,
+        SUM(audience_size) as total_audience_reach,
+        COUNT(CASE WHEN created_at >= NOW() - INTERVAL '7 days' THEN 1 END) as segments_last_7d
       FROM segments
-      WHERE createdBy = $1
-    `;
+      WHERE created_by = $1
+    `, [userId]);
 
-    const topSegmentsQuery = `
-      SELECT name, audienceSize, createdAt
+    const topSegments = await pool.query(`
+      SELECT name, audience_size, created_at
       FROM segments
-      WHERE createdBy = $1
-      ORDER BY audienceSize DESC
+      WHERE created_by = $1
+      ORDER BY audience_size DESC
       LIMIT 5
-    `;
-
-    const [statsResult, topSegmentsResult] = await Promise.all([
-      pool.query(statsQuery, [userId]),
-      pool.query(topSegmentsQuery, [userId])
-    ]);
+    `, [userId]);
 
     res.json({
       success: true,
-      data: {
-        stats: statsResult.rows[0],
-        topSegments: topSegmentsResult.rows
-      }
+      stats: stats.rows[0],
+      topSegments: topSegments.rows
     });
+
   } catch (error) {
-    console.error('Error fetching segment stats:', error);
+    console.error('❌ Get segment stats error:', error);
     res.status(500).json({
       success: false,
       error: 'Failed to fetch segment statistics'
