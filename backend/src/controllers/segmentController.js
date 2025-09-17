@@ -2,6 +2,8 @@ const { pool } = require('../config/database');
 const { evaluateRules } = require('../utils/ruleEngine');
 const { generateSegmentFromNLP } = require('../services/aiService');
 
+// File: segmentController.js
+
 const createSegment = async (req, res) => {
   const client = await pool.connect();
   
@@ -14,56 +16,49 @@ const createSegment = async (req, res) => {
     if (!name || (!rules && !nlpQuery)) {
       return res.status(400).json({
         success: false,
-        error: 'Name and either rules or natural language query are required'
+        error: 'Name and either rules or an NLP query are required'
       });
     }
 
     let finalRules = rules;
 
-    // In segmentController.js - around line where AI generates rules
-// In segmentController.js - after AI generates rules
-if (nlpQuery && !rules) {
-    try {
-        console.log('🤖 Converting NLP query to rules:', nlpQuery);
-        finalRules = await generateSegmentFromNLP(nlpQuery);
-        console.log('✅ AI generated rules (before mapping):', JSON.stringify(finalRules, null, 2));
-        
-        // In segmentController.js, inside the createSegment function's "if (nlpQuery && !rules)" block
-
-if (finalRules && finalRules.conditions) {
-    finalRules.conditions = finalRules.conditions.map(condition => {
-        // Maps AI-generated camelCase field names to database snake_case field names
-        const fieldMapping = {
-            'totalSpend': 'total_spend',
-            'lastOrderDate': 'last_visit',
-            'visitCount': 'visit_count',
-            // Add any other potential mappings from the AI
-        };
-        
-        const mappedField = fieldMapping[condition.field] || condition.field;
-
-        return {
-            ...condition,
-            field: mappedField
-        };
-    });
-}        
-        console.log('✅ AI generated rules (after mapping):', JSON.stringify(finalRules, null, 2));
-        
-    } catch (aiError) {
-        console.error('❌ AI conversion failed:', aiError);
-        return res.status(400).json({
-            success: false,
-            error: 'Failed to convert natural language query to rules'
-        });
+    // If rules are not provided, generate them from the NLP query.
+    if (nlpQuery && !finalRules) {
+        try {
+            console.log('🤖 Converting NLP query to rules:', nlpQuery);
+            finalRules = await generateSegmentFromNLP(nlpQuery);
+        } catch (aiError) {
+            console.error('❌ AI conversion failed:', aiError);
+            return res.status(400).json({
+                success: false,
+                error: 'Failed to convert natural language query to rules'
+            });
+        }
     }
-}
 
+    // --- START OF THE CORRECTED LOGIC ---
+    // This mapping logic now runs on ALL rules, fixing the bug.
+    if (finalRules && finalRules.conditions) {
+        console.log('✅ Rules before mapping:', JSON.stringify(finalRules, null, 2));
+        finalRules.conditions = finalRules.conditions.map(condition => {
+            const fieldMapping = {
+                'totalSpend': 'total_spend',
+                'lastOrderDate': 'last_visit',
+                'visitCount': 'visit_count',
+            };
+            return {
+                ...condition,
+                field: fieldMapping[condition.field] || condition.field
+            };
+        });
+        console.log('✅ Rules after mapping:', JSON.stringify(finalRules, null, 2));
+    }
+    // --- END OF THE CORRECTED LOGIC ---
 
     if (!finalRules || !finalRules.conditions || !Array.isArray(finalRules.conditions)) {
       return res.status(400).json({
         success: false,
-        error: 'Invalid rules structure'
+        error: 'Invalid rules structure after processing'
       });
     }
 
@@ -91,7 +86,6 @@ if (finalRules && finalRules.conditions) {
   } catch (error) {
     await client.query('ROLLBACK');
     console.error('❌ Create segment error:', error);
-    // FIX: Send a more detailed error message back to the frontend for debugging.
     res.status(500).json({
       success: false,
       error: 'Failed to create segment due to an internal error.',
