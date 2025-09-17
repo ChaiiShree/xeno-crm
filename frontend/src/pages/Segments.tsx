@@ -258,7 +258,7 @@ const Segments: React.FC = () => {
 
       {/* Create Segment Modal */}
       <Modal
-        open={showCreateModal}
+        isOpen={showCreateModal}
         onClose={() => {
           setShowCreateModal(false)
           resetForm()
@@ -354,16 +354,24 @@ const Segments: React.FC = () => {
             </div>
           )}
 
-          {/* Audience Preview */}
-          {(isValidRules() || (createMethod === 'ai' && formData.nlpQuery)) && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Audience Preview
-              </label>
-              <AudiencePreview rules={rules} nlpQuery={createMethod === 'ai' ? formData.nlpQuery : undefined} />
-            </div>
-          )}
+// Segments.tsx
 
+// ... inside the modal's JSX
+
+{/* Audience Preview */}
+{(isValidRules() || (createMethod === 'ai' && formData.nlpQuery)) && (
+  <div>
+    <label className="block text-sm font-medium text-gray-700 mb-1">
+      Audience Preview
+    </label>
+    <AudiencePreview
+      rules={rules}
+      // Pass isValidRules() result
+      isValidRules={isValidRules()}
+      nlpQuery={createMethod === 'ai' ? formData.nlpQuery : undefined}
+    />
+  </div>
+)}
           {/* Actions */}
           <div className="flex justify-end space-x-3 pt-6 border-t border-gray-200">
             <Button

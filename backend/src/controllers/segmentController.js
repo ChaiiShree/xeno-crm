@@ -28,23 +28,26 @@ if (nlpQuery && !rules) {
         finalRules = await generateSegmentFromNLP(nlpQuery);
         console.log('✅ AI generated rules (before mapping):', JSON.stringify(finalRules, null, 2));
         
-        // ADD THIS FIELD MAPPING
-        if (finalRules && finalRules.conditions) {
-            finalRules.conditions = finalRules.conditions.map(condition => {
-                // Map frontend field names to database field names
-                const fieldMapping = {
-                    'totalSpend': 'total_spend',
-                    'lastOrderDate': 'last_visit',
-                    'visitCount': 'visit_count'
-                };
-                
-                return {
-                    ...condition,
-                    field: fieldMapping[condition.field] || condition.field
-                };
-            });
-        }
+        // In segmentController.js, inside the createSegment function's "if (nlpQuery && !rules)" block
+
+if (finalRules && finalRules.conditions) {
+    finalRules.conditions = finalRules.conditions.map(condition => {
+        // Maps AI-generated camelCase field names to database snake_case field names
+        const fieldMapping = {
+            'totalSpend': 'total_spend',
+            'lastOrderDate': 'last_visit',
+            'visitCount': 'visit_count',
+            // Add any other potential mappings from the AI
+        };
         
+        const mappedField = fieldMapping[condition.field] || condition.field;
+
+        return {
+            ...condition,
+            field: mappedField
+        };
+    });
+}        
         console.log('✅ AI generated rules (after mapping):', JSON.stringify(finalRules, null, 2));
         
     } catch (aiError) {

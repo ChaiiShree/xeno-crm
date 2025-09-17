@@ -8,19 +8,23 @@ import LoadingSpinner from '../ui/LoadingSpinner'
 
 interface AudiencePreviewProps {
   rules: SegmentRules
+  nlpQuery?: string // Add nlpQuery as an optional prop
   isValidRules: boolean
 }
 
 const AudiencePreview: React.FC<AudiencePreviewProps> = ({
   rules,
+  nlpQuery, // Destructure the new prop
   isValidRules
 }) => {
   const { usePreviewAudience } = useAPI()
   const previewMutation = usePreviewAudience()
 
   const handlePreview = () => {
-    if (isValidRules) {
-      previewMutation.mutate({ rules })
+    // The preview can be triggered by valid manual rules OR a valid NLP query
+    if (isValidRules || (nlpQuery && nlpQuery.trim().length > 0)) {
+      // Pass both rules and nlpQuery to the mutation
+      previewMutation.mutate({ rules, nlpQuery })
     }
   }
 
