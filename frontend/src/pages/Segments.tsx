@@ -1,8 +1,9 @@
 import React, { useState } from 'react'
 import { Plus, Search, Target, Sparkles } from 'lucide-react'
+import toast from 'react-hot-toast'
 import { useAPI } from '../hooks/useAPI'
 import { useRuleBuilder } from '../hooks/useRuleBuilder'
-import type { CreateSegmentRequest, Segment, SegmentRules, RuleCondition } from '../types/segment'
+import type { CreateSegmentRequest, Segment, SegmentRules } from '../types/segment'
 import Button from '../components/ui/Button'
 import Input from '../components/ui/Input'
 import Modal from '../components/ui/Modal'
@@ -22,82 +23,130 @@ const Segments: React.FC = () => {
   })
 
   const { useSegments, useCreateSegment, useDeleteSegment } = useAPI()
-  const { data, isLoading } = useSegments({ search })
+  const { data, isLoading, error: segmentsError } = useSegments({ search })
   const createMutation = useCreateSegment()
   const deleteMutation = useDeleteSegment()
-  const { rules, setRules, resetRules, isValidRules } = useRuleBuilder()
+  const { rules, setRules, resetRules, isValidRules, getValidationErrors } = useRuleBuilder()
 
-  // FIX: Ensure proper rule validation and structure
-  const handleCreateSegment = () => {
-    // Validate required fields
-    if (!formData.name.trim()) {
-      toast.error('Segment name is required');
-      return;
+  // Validate rule structure before submission
+  const validateRulesStructure = (rules: SegmentRules): boolean => {
+    if (!rules) {
+      toast.error('Rules are required for manual method')
+      return false
     }
 
-    if (!formData.description.trim()) {
-      toast.error('Segment description is required');
-      return;
+    if (!rules.operator || !['AND', 'OR'].includes(rules.operator)) {
+      toast.error('Rule operator must be AND or OR')
+      return false
     }
 
-    // Validate rules structure for backend
-    if (!isValidRules()) {
-      toast.error('Please provide valid segmentation rules');
-      return;
+    if (!rules.conditions || !Array.isArray(rules.conditions) || rules.conditions.length === 0) {
+      toast.error('At least one rule condition is required')
+      return false
     }
 
-    // Ensure rules have the correct structure expected by backend
-    const validatedRules = {
-      operator: rules.operator || 'AND',
-      conditions: rules.conditions || []
-    };
-
-    // Ensure conditions array is not empty
-    if (validatedRules.conditions.length === 0) {
-      toast.error('At least one condition is required');
-      return;
-    }
-
-    const payload: CreateSegmentRequest = {
-      name: formData.name.trim(),
-      description: formData.description.trim(),
-      rules: validatedRules
-    };
-
-    createMutation.mutate(payload, {
-      onSuccess: () => {
-        setShowCreateModal(false)
-        resetForm()
-      },
-      onError: (error: any) => {
-        console.error('Segment creation failed:', error);
-        toast.error(error.response?.data?.error || 'Failed to create segment');
+    // Validate each condition
+    for (let i = 0; i < rules.conditions.length; i++) {
+      const condition = rules.conditions[i]
+      if (!condition.field || !condition.operator || condition.value === undefined || condition.value === '') {
+        toast.error(`Condition ${i + 1} is incomplete. Please fill all fields.`)
+        return false
       }
-    })
+    }
+
+    // Limit conditions to prevent performance issues
+    if (rules.conditions.length > 10) {
+      toast.error('Maximum 10 conditions allowed per segment')
+      return false
+    }
+
+    return true
   }
 
-  // FIX: Proper handling of AI-generated segments
-  const handleSegmentGenerated = (segment: {
-    conditions: RuleCondition[];
-    suggestedName?: string;
-    explanation?: string;
-  }) => {
-    console.log('Generated segment:', segment);
+  const handleCreateSegment = async () => {
+    try {
+      // Validate required fields
+      if (!formData.name.trim()) {
+        toast.error('Segment name is required')
+        return
+      }
+
+      if (!formData.description.trim()) {
+        toast.error('Segment description is required')
+        return
+      }
+
+      // Validate based on creation method
+      if (createMethod === 'manual') {
+        if (!validateRulesStructure(rules)) {
+          return
+        }
+      } else if (createMethod === 'ai') {
+        if (!formData.nlpQuery.trim() && !validateRulesStructure(rules)) {
+          toast.error('Please enter a natural language query or build manual rules')
+          return
+        }
+      }
+
+      const payload: CreateSegmentRequest = {
+        name: formData.name.trim(),
+        description: formData.description.trim(),
+      }
+
+      if (createMethod === 'manual') {
+        // Ensure rules have proper structure
+        payload.rules = {
+          operator: rules.operator || 'AND',
+          conditions: rules.conditions || []
+        }
+      } else {
+        if (formData.nlpQuery.trim()) {
+          payload.nlpQuery = formData.nlpQuery.trim()
+        } else {
+          payload.rules = {
+            operator: rules.operator || 'AND',
+            conditions: rules.conditions || []
+          }
+        }
+      }
+
+      console.log('Creating segment with payload:', payload)
+
+      await createMutation.mutateAsync(payload)
+      toast.success('Segment created successfully!')
+      setShowCreateModal(false)
+      resetForm()
+    } catch (error: any) {
+      console.error('Segment creation error:', error)
+      const errorMessage = error?.response?.data?.error || error?.message || 'Failed to create segment'
+      toast.error(errorMessage)
+    }
+  }
+
+  const handleSegmentGenerated = (generatedData: any) => {
+    console.log('AI Generated segment data:', generatedData)
     
-    // Ensure conditions are properly structured
-    const validConditions = segment.conditions || [];
+    if (generatedData.rules) {
+      setRules({
+        operator: generatedData.rules.operator || 'AND',
+        conditions: generatedData.rules.conditions || []
+      })
+    }
     
-    setRules({
-      operator: 'AND',
-      conditions: validConditions
-    });
+    if (generatedData.suggestedName && !formData.name) {
+      setFormData(prev => ({
+        ...prev,
+        name: generatedData.suggestedName
+      }))
+    }
     
-    setFormData(prev => ({
-      ...prev,
-      name: prev.name || segment.suggestedName || 'AI Generated Segment',
-      description: prev.description || segment.explanation || ''
-    }));
-  };
+    if (generatedData.explanation && !formData.description) {
+      setFormData(prev => ({
+        ...prev,
+        description: generatedData.explanation
+      }))
+    }
+  }
 
   const resetForm = () => {
     setFormData({
@@ -109,9 +158,14 @@ const Segments: React.FC = () => {
     setCreateMethod('manual')
   }
 
-  const handleDelete = (id: number) => {
+  const handleDelete = async (id: number) => {
     if (window.confirm('Are you sure you want to delete this segment?')) {
-      deleteMutation.mutate(id)
+      try {
+        await deleteMutation.mutateAsync(id)
+        toast.success('Segment deleted successfully!')
+      } catch (error: any) {
+        toast.error(error?.response?.data?.error || 'Failed to delete segment')
+      }
     }
   }
 
@@ -121,6 +175,20 @@ const Segments: React.FC = () => {
     return (
       <div className="flex justify-center items-center h-64">
         <LoadingSpinner />
+      </div>
+    )
+  }
+
+  if (segmentsError) {
+    return (
+      <div className="text-center py-12">
+        <div className="text-red-600 mb-4">Error loading segments</div>
+        <button 
+          onClick={() => window.location.reload()} 
+          className="text-blue-600 hover:underline"
+        >
+          Retry
+        </button>
       </div>
     )
   }
@@ -165,21 +233,22 @@ const Segments: React.FC = () => {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {segments.map((segment: Segment) => (
-            <div key={segment.id} className="bg-white rounded-lg border border-gray-200 p-6">
+            <div key={segment.id} className="bg-white rounded-lg border border-gray-200 p-6 hover:shadow-md transition-shadow">
               <div className="flex justify-between items-start mb-4">
-                <div>
-                  <h3 className="font-semibold text-gray-900">{segment.name}</h3>
-                  <p className="text-sm text-gray-500 mt-1">{segment.description}</p>
+                <div className="flex-1">
+                  <h3 className="font-semibold text-gray-900 mb-1">{segment.name}</h3>
+                  <p className="text-sm text-gray-500 line-clamp-2">{segment.description}</p>
                 </div>
                 <button
                   onClick={() => handleDelete(segment.id)}
-                  className="text-red-400 hover:text-red-600"
+                  className="text-red-400 hover:text-red-600 ml-2 p-1"
+                  title="Delete segment"
                 >
                   <Plus className="w-4 h-4 transform rotate-45" />
                 </button>
               </div>
               <div className="flex items-center justify-between text-sm text-gray-500">
-                <span>{segment.audienceSize?.toLocaleString()} customers</span>
+                <span className="font-medium">{segment.audienceSize?.toLocaleString() || 0} customers</span>
                 <span>{new Date(segment.createdAt).toLocaleDateString()}</span>
               </div>
             </div>
@@ -208,7 +277,7 @@ const Segments: React.FC = () => {
                   : 'border-gray-200 hover:border-gray-300'
               }`}
             >
-              <Target className="w-6 h-6 mx-auto mb-2" />
+              <Target className="w-6 h-6 mx-auto mb-2 text-gray-600" />
               <div className="font-medium">Manual Rules</div>
               <div className="text-sm text-gray-500">Build segment with conditions</div>
             </button>
@@ -220,7 +289,7 @@ const Segments: React.FC = () => {
                   : 'border-gray-200 hover:border-gray-300'
               }`}
             >
-              <Sparkles className="w-6 h-6 mx-auto mb-2" />
+              <Sparkles className="w-6 h-6 mx-auto mb-2 text-gray-600" />
               <div className="font-medium">AI Assistant</div>
               <div className="text-sm text-gray-500">Describe in natural language</div>
             </button>
@@ -230,24 +299,26 @@ const Segments: React.FC = () => {
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Segment Name
+                Segment Name *
               </label>
               <Input
                 placeholder="Enter segment name"
                 value={formData.name}
                 onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                maxLength={100}
               />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Description
+                Description *
               </label>
               <textarea
                 placeholder="Describe this segment"
                 value={formData.description}
                 onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 resize-none"
                 rows={3}
+                maxLength={500}
               />
             </div>
           </div>
@@ -256,9 +327,18 @@ const Segments: React.FC = () => {
           {createMethod === 'manual' ? (
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Segmentation Rules
+                Segmentation Rules *
               </label>
               <RuleBuilder rules={rules} onChange={setRules} />
+              {getValidationErrors().length > 0 && (
+                <div className="mt-2 text-sm text-red-600">
+                  <ul className="list-disc list-inside">
+                    {getValidationErrors().map((error, index) => (
+                      <li key={index}>{error}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
           ) : (
             <div>
@@ -266,6 +346,8 @@ const Segments: React.FC = () => {
                 Describe Your Audience
               </label>
               <NLPQueryInput
+                value={formData.nlpQuery}
+                onChange={(value) => setFormData(prev => ({ ...prev, nlpQuery: value }))}
                 onSegmentGenerated={handleSegmentGenerated}
                 placeholder="e.g., Customers who spent more than $500 in the last 6 months"
               />
@@ -273,29 +355,36 @@ const Segments: React.FC = () => {
           )}
 
           {/* Audience Preview */}
-          {isValidRules() && (
+          {(isValidRules() || (createMethod === 'ai' && formData.nlpQuery)) && (
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Audience Preview
               </label>
-              <AudiencePreview rules={rules} />
+              <AudiencePreview rules={rules} nlpQuery={createMethod === 'ai' ? formData.nlpQuery : undefined} />
             </div>
           )}
 
           {/* Actions */}
-          <div className="flex justify-end space-x-3 pt-6 border-t">
+          <div className="flex justify-end space-x-3 pt-6 border-t border-gray-200">
             <Button
               variant="outline"
               onClick={() => {
                 setShowCreateModal(false)
                 resetForm()
               }}
+              disabled={createMutation.isPending}
             >
               Cancel
             </Button>
             <Button
               onClick={handleCreateSegment}
-              disabled={!formData.name || !formData.description || !isValidRules() || createMutation.isPending}
+              disabled={
+                !formData.name.trim() || 
+                !formData.description.trim() || 
+                createMutation.isPending ||
+                (createMethod === 'manual' && !isValidRules()) ||
+                (createMethod === 'ai' && !formData.nlpQuery.trim() && !isValidRules())
+              }
               loading={createMutation.isPending}
             >
               Create Segment

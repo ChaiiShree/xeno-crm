@@ -1,67 +1,78 @@
 import { useState, useCallback } from 'react'
 import type { SegmentRules, RuleCondition } from '../types/segment'
 
-export const useRuleBuilder = (initialRules?: SegmentRules) => {
-  const [rules, setRules] = useState<SegmentRules>(
-    initialRules || {
-      operator: 'AND',
-      conditions: [{ field: 'total_spend', operator: '>', value: '' }]
-    }
-  )
-
-  const updateOperator = useCallback((operator: 'AND' | 'OR') => {
-    setRules(prev => ({ ...prev, operator }))
-  }, [])
-
-  const addCondition = useCallback(() => {
-    const newCondition: RuleCondition = {
-      field: 'total_spend',
-      operator: '>',
-      value: ''
-    }
-    setRules(prev => ({
-      ...prev,
-      conditions: [...prev.conditions, newCondition]
-    }))
-  }, [])
-
-  const removeCondition = useCallback((index: number) => {
-    setRules(prev => ({
-      ...prev,
-      conditions: prev.conditions.filter((_, i) => i !== index)
-    }))
-  }, [])
-
-  const updateCondition = useCallback((index: number, updates: Partial<RuleCondition>) => {
-    setRules(prev => ({
-      ...prev,
-      conditions: prev.conditions.map((condition, i) => 
-        i === index ? { ...condition, ...updates } : condition
-      )
-    }))
-  }, [])
+export const useRuleBuilder = () => {
+  const [rules, setRules] = useState<SegmentRules>({
+    operator: 'AND',
+    conditions: []
+  })
 
   const resetRules = useCallback(() => {
     setRules({
       operator: 'AND',
-      conditions: [{ field: 'total_spend', operator: '>', value: '' }]
+      conditions: []
     })
   }, [])
 
-  const isValidRules = useCallback(() => {
-    return rules.conditions.every(condition => 
-      condition.field && condition.operator && condition.value !== ''
-    )
+  const isValidRules = useCallback((): boolean => {
+    if (!rules) return false
+    if (!rules.operator || !['AND', 'OR'].includes(rules.operator)) return false
+    if (!rules.conditions || !Array.isArray(rules.conditions) || rules.conditions.length === 0) return false
+    
+    // Check each condition
+    return rules.conditions.every((condition: RuleCondition) => {
+      return condition.field && 
+             condition.operator && 
+             (condition.value !== undefined && condition.value !== '' && condition.value !== null)
+    })
+  }, [rules])
+
+  const getValidationErrors = useCallback((): string[] => {
+    const errors: string[] = []
+    
+    if (!rules) {
+      errors.push('Rules object is required')
+      return errors
+    }
+
+    if (!rules.operator || !['AND', 'OR'].includes(rules.operator)) {
+      errors.push('Rule operator must be AND or OR')
+    }
+
+    if (!rules.conditions || !Array.isArray(rules.conditions)) {
+      errors.push('Conditions must be an array')
+      return errors
+    }
+
+    if (rules.conditions.length === 0) {
+      errors.push('At least one condition is required')
+      return errors
+    }
+
+    if (rules.conditions.length > 10) {
+      errors.push('Maximum 10 conditions allowed')
+    }
+
+    rules.conditions.forEach((condition: RuleCondition, index: number) => {
+      if (!condition.field) {
+        errors.push(`Condition ${index + 1}: Field is required`)
+      }
+      if (!condition.operator) {
+        errors.push(`Condition ${index + 1}: Operator is required`)
+      }
+      if (condition.value === undefined || condition.value === '' || condition.value === null) {
+        errors.push(`Condition ${index + 1}: Value is required`)
+      }
+    })
+
+    return errors
   }, [rules])
 
   return {
     rules,
     setRules,
-    updateOperator,
-    addCondition,
-    removeCondition,
-    updateCondition,
     resetRules,
-    isValidRules
+    isValidRules,
+    getValidationErrors
   }
 }
