@@ -216,13 +216,14 @@ const previewAudience = async (req, res) => {
     if (!rules && !nlpQuery) {
       return res.status(400).json({
         success: false,
-        error: 'Either rules or natural language query is required'
+        error: 'Either rules or a natural language query is required'
       });
     }
 
     let finalRules = rules;
 
-    if (nlpQuery && !rules) {
+    // If rules are not provided, generate them from the NLP query.
+    if (nlpQuery && !finalRules) {
       try {
         finalRules = await generateSegmentFromNLP(nlpQuery);
       } catch (aiError) {
@@ -234,6 +235,22 @@ const previewAudience = async (req, res) => {
       }
     }
 
+    // This mapping logic now runs on ALL rules, making it more robust.
+    if (finalRules && finalRules.conditions) {
+      finalRules.conditions = finalRules.conditions.map(condition => {
+        const fieldMapping = {
+          'totalSpend': 'total_spend',
+          'lastOrderDate': 'last_visit',
+          'visitCount': 'visit_count'
+        };
+        return {
+          ...condition,
+          field: fieldMapping[condition.field] || condition.field
+        };
+      });
+    }
+
+    // Now, we can be confident finalRules are always correctly formatted.
     const audienceSize = await evaluateRules(finalRules);
     const sampleCustomers = await evaluateRules(finalRules, 10, true);
 
@@ -252,7 +269,6 @@ const previewAudience = async (req, res) => {
     });
   }
 };
-
 const updateSegment = async (req, res) => {
   const client = await pool.connect();
   
