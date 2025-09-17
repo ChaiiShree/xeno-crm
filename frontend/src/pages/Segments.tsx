@@ -158,7 +158,7 @@ const Segments: React.FC = () => {
         toast.error(error?.response?.data?.error || 'Failed to delete segment')
       }
     }
-  }
+  }//bruh
 
   const segments = data?.segments || []
 
