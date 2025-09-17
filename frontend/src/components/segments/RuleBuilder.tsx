@@ -42,8 +42,8 @@ const OPERATORS = {
 
 const MAX_CONDITIONS = 10
 const DEFAULT_CONDITION: RuleCondition = {
-  field: '',
-  operator: '',
+  field: undefined as unknown as RuleCondition['field'],
+  operator: undefined as unknown as RuleCondition['operator'],
   value: '',
 }
 
@@ -135,7 +135,7 @@ const RuleBuilder: React.FC<RuleBuilderProps> = ({ rules, onChange }) => {
     updateRules(newRules)
   }
 
-  const updateCondition = (index: number, field: keyof RuleCondition, value: any) => {
+  const updateCondition = (index: number, field: keyof RuleCondition, value: string | number) => {
     const newConditions = [...safeRules.conditions]
     
     if (index >= 0 && index < newConditions.length) {
@@ -146,8 +146,8 @@ const RuleBuilder: React.FC<RuleBuilderProps> = ({ rules, onChange }) => {
 
       // Reset operator and value when field changes
       if (field === 'field') {
-        newConditions[index].operator = ''
-        newConditions[index].value = ''
+  newConditions[index].operator = undefined as unknown as RuleCondition['operator']
+  newConditions[index].value = ''
       }
 
       const newRules = {

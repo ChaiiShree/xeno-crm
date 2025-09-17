@@ -64,64 +64,55 @@ const Segments: React.FC = () => {
   }
 
   const handleCreateSegment = async () => {
-    try {
-      // Validate required fields
-      if (!formData.name.trim()) {
-        toast.error('Segment name is required')
-        return
-      }
-
-      if (!formData.description.trim()) {
-        toast.error('Segment description is required')
-        return
-      }
-
-      // Validate based on creation method
-      if (createMethod === 'manual') {
-        if (!validateRulesStructure(rules)) {
-          return
-        }
-      } else if (createMethod === 'ai') {
-        if (!formData.nlpQuery.trim() && !validateRulesStructure(rules)) {
-          toast.error('Please enter a natural language query or build manual rules')
-          return
-        }
-      }
-
-      const payload: CreateSegmentRequest = {
-        name: formData.name.trim(),
-        description: formData.description.trim(),
-      }
-
-      if (createMethod === 'manual') {
-        // Ensure rules have proper structure
-        payload.rules = {
-          operator: rules.operator || 'AND',
-          conditions: rules.conditions || []
-        }
-      } else {
-        if (formData.nlpQuery.trim()) {
-          payload.nlpQuery = formData.nlpQuery.trim()
-        } else {
-          payload.rules = {
-            operator: rules.operator || 'AND',
-            conditions: rules.conditions || []
-          }
-        }
-      }
-
-      console.log('Creating segment with payload:', payload)
-
-      await createMutation.mutateAsync(payload)
-      toast.success('Segment created successfully!')
-      setShowCreateModal(false)
-      resetForm()
-    } catch (error: any) {
-      console.error('Segment creation error:', error)
-      const errorMessage = error?.response?.data?.error || error?.message || 'Failed to create segment'
-      toast.error(errorMessage)
+  try {
+    // Validate required fields
+    if (!formData.name.trim()) {
+      toast.error('Segment name is required');
+      return;
     }
+    if (!formData.description.trim()) {
+      toast.error('Segment description is required');
+      return;
+    }
+
+    // --- Start of Corrected Logic ---
+
+    const payload: CreateSegmentRequest = {
+      name: formData.name.trim(),
+      description: formData.description.trim(),
+    };
+
+    // Always attach the rules if they are valid.
+    // This works for both "manual" mode and for "ai" mode after the AI has generated rules.
+    if (isValidRules()) {
+      payload.rules = rules;
+    }
+
+    // If in AI mode, also attach the nlpQuery for record-keeping.
+    if (createMethod === 'ai' && formData.nlpQuery.trim()) {
+      payload.nlpQuery = formData.nlpQuery.trim();
+    }
+
+    // Final validation to ensure we have something to create the segment with.
+    if (!payload.rules && !payload.nlpQuery) {
+      toast.error('Please define segment rules or provide an AI query.');
+      return;
+    }
+
+    // --- End of Corrected Logic ---
+
+    console.log('Creating segment with payload:', payload);
+
+    await createMutation.mutateAsync(payload);
+    toast.success('Segment created successfully!');
+    setShowCreateModal(false);
+    resetForm();
+  } catch (error: any) {
+    console.error('Segment creation error:', error);
+    const errorMessage = error?.response?.data?.error || error?.message || 'Failed to create segment';
+    toast.error(errorMessage);
   }
+};
 
   const handleSegmentGenerated = (generatedData: any) => {
     console.log('AI Generated segment data:', generatedData)
