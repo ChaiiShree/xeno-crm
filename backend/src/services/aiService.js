@@ -22,19 +22,37 @@ class AIService {
     console.log('✅ AIService initialized successfully');
   }
 
-  // Natural Language Customer Segmentation
-  async generateSegmentFromNLP(naturalLanguageQuery, customerData) {
+ // In AIService.js
+
+async generateSegmentFromNLP(naturalLanguageQuery) {
     const prompt = `
-    Based on this customer data structure: ${JSON.stringify(customerData.sample || {}, null, 2)}
+    You are a helpful assistant for a Customer Relationship Management (CRM) system.
+    Your task is to convert a user's natural language query into a structured JSON object for segmenting customers.
+
+    The valid fields for conditions are:
+    - "totalSpend": The customer's total spending (numeric).
+    - "visitCount": The total number of visits (numeric).
+    - "lastVisit": The date of the customer's last visit (date).
+
+    The valid operators are: '>', '<', '>=', '<=', '=', '!='.
+
+    For date-based queries like "in the last 6 months", convert them to a specific date format (YYYY-MM-DD). Assume today's date is ${new Date().toISOString().split('T')[0]}.
+
+    Return ONLY a valid JSON object with the following structure:
+    {
+      "conditions": [
+        {
+          "field": "valid_field_name",
+          "operator": "valid_operator",
+          "value": "string or number"
+        }
+      ],
+      "operator": "AND" | "OR",
+      "explanation": "A human-readable explanation of the rules.",
+      "suggestedName": "A short, descriptive name for the segment."
+    }
     
-    Convert this natural language query into a customer segmentation rule:
-    "${naturalLanguageQuery}"
-    
-    Return ONLY a valid JSON object with:
-    - conditions: array of {field, operator, value}
-    - explanation: human-readable explanation
-    - estimatedAudience: rough audience size estimate
-    - suggestedName: suggested segment name
+    User Query: "${naturalLanguageQuery}"
     `;
 
     try {
@@ -47,12 +65,12 @@ class AIService {
       if (jsonMatch) {
         return JSON.parse(jsonMatch[0]);
       }
-      throw new Error('Invalid JSON response');
+      throw new Error('Invalid JSON response from AI');
     } catch (error) {
-      console.error('Gemini API error:', error);
+      console.error('Gemini API error in generateSegmentFromNLP:', error);
       throw error;
     }
-  }
+}
 
   // AI Message Generation for Campaigns
   async generateCampaignMessage(campaignType, audience, tone = 'professional') {
