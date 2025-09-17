@@ -148,7 +148,7 @@ const createSegment = async (req, res) => {
       audienceSize = 0;
     }
 
-    // Create segment in database (using correct column names)
+    // FIX: Use consistent camelCase column names that match your database schema
     const result = await client.query(
       `INSERT INTO segments (name, description, rulesJson, createdBy, audienceSize) 
        VALUES ($1, $2, $3, $4, $5) 
@@ -166,6 +166,7 @@ const createSegment = async (req, res) => {
     
     const newSegment = result.rows[0];
     
+    // FIX: Return response structure that matches frontend expectations
     res.status(201).json({
       success: true,
       data: {
