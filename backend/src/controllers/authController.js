@@ -1,45 +1,42 @@
+// File: controllers/authController.js
+
 const jwt = require('jsonwebtoken');
-
-const generateToken = (userId) => {
-  return jwt.sign(
-    { userId }, 
-    process.env.JWT_SECRET || 'xeno-crm-jwt-secret', 
-    { expiresIn: '7d' }
-  );
-};
-
-const googleAuth = (req, res, next) => {
-  console.log('🔐 Initiating Google OAuth');
-  next();
-};
 
 const googleCallback = async (req, res) => {
   try {
     if (!req.user) {
-      console.log('❌ OAuth failed - no user');
-      return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:5173'}/login?error=auth_failed`);
+      console.log('❌ OAuth failed - Passport did not return a user.');
+      return res.redirect(`${process.env.FRONTEND_URL}/login?error=auth_failed`);
     }
 
-    const token = generateToken(req.user.id);
+    // Passport has successfully authenticated the user; `req.user` is available.
+    // Now, we create a JWT for our stateless API.
+    const token = jwt.sign(
+      { userId: req.user.id, email: req.user.email, name: req.user.name, role: req.user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: '7d' }
+    );
     
-    // --- THIS IS THE CHANGE ---
-    // Instead of setting a cookie, redirect with the token in the query params.
-    res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:5173'}/auth/callback?token=${token}`);
-    // -------------------------
+    // Redirect the user back to the frontend, passing the token in the URL.
+    // The frontend will read this token from the URL and save it.
+    res.redirect(`${process.env.FRONTEND_URL}/auth/callback?token=${token}`);
     
   } catch (error) {
-    console.error('❌ Auth callback error:', error);
-    res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:5173'}/login?error=server_error`);
+    console.error('❌ Auth callback controller error:', error);
+    res.redirect(`${process.env.FRONTEND_URL}/login?error=server_error`);
   }
 };
 
 const getCurrentUser = async (req, res) => {
+  // The `authenticateToken` middleware has already validated the JWT
+  // and attached the user's data to `req.user`.
   try {
     const user = {
       id: req.user.id,
       email: req.user.email,
       name: req.user.name,
-      profilePicture: req.user.profile_picture
+      profilePicture: req.user.profile_picture,
+      role: req.user.role
     };
     
     res.json({ 
@@ -57,25 +54,15 @@ const getCurrentUser = async (req, res) => {
 };
 
 const logout = async (req, res) => {
+  // FIX: For JWT authentication, logout is primarily a client-side responsibility
+  // (i.e., deleting the token). This server endpoint is a courtesy.
+  // The session-specific `req.logout()` is no longer needed.
   try {
-    res.clearCookie('auth_token');
-    
-    req.logout((err) => {
-      if (err) {
-        console.error('❌ Logout error:', err);
-        return res.status(500).json({ 
-          success: false,
-          error: 'Logout failed' 
-        });
-      }
-      
-      console.log('👋 User logged out successfully');
-      res.json({ 
-        success: true,
-        message: 'Logged out successfully' 
-      });
+    console.log(`👋 User logged out: ${req.user.email}`);
+    res.json({ 
+      success: true,
+      message: 'Logged out successfully' 
     });
-    
   } catch (error) {
     console.error('❌ Logout error:', error);
     res.status(500).json({ 
@@ -86,6 +73,7 @@ const logout = async (req, res) => {
 };
 
 const checkAuth = async (req, res) => {
+  // The `optionalAuth` middleware will add `req.user` if a valid token is present.
   try {
     if (req.user) {
       res.json({
@@ -95,7 +83,8 @@ const checkAuth = async (req, res) => {
           id: req.user.id,
           email: req.user.email,
           name: req.user.name,
-          profilePicture: req.user.profile_picture
+          profilePicture: req.user.profile_picture,
+          role: req.user.role
         }
       });
     } else {
@@ -113,7 +102,6 @@ const checkAuth = async (req, res) => {
 };
 
 module.exports = {
-  googleAuth,
   googleCallback,
   getCurrentUser,
   logout,
