@@ -55,7 +55,7 @@ const apiService = {
 
   // Customer endpoints
   getCustomers: (params?: any) => apiService.get('/customers', params),
-  getCustomerStats: () => apiService.get('/stats/customers'),
+  getCustomerStats: () => apiService.get('/customers/stats'),
   createCustomer: async (data: any) => {
     const response = await axiosInstance.post('/customers', data);
     return response.data;
@@ -64,7 +64,7 @@ const apiService = {
   // Segment endpoints
   getSegments: (params?: any) => apiService.get('/segments', params),
   getSegmentById: (id: number) => apiService.get(`/segments/${id}`),
-  getSegmentStats: () => apiService.get('/stats/segments'),
+  getSegmentStats: () => apiService.get('/segments/stats'),
   createSegment: async (data: any) => {
     const response = await axiosInstance.post('/segments', data);
     return response.data;
@@ -85,7 +85,7 @@ const apiService = {
   // Campaign endpoints
   getCampaigns: (params?: any) => apiService.get('/campaigns', params),
   getCampaignById: (id: number) => apiService.get(`/campaigns/${id}`),
-  getCampaignStats: () => apiService.get('/stats/campaigns'),
+  getCampaignStats: () => apiService.get('/campaigns/stats'),
   createCampaign: async (data: any) => {
     const response = await axiosInstance.post('/campaigns', data);
     return response.data;
