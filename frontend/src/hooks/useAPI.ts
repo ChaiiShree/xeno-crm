@@ -16,8 +16,8 @@ export const useAPI = () => {
   const useCustomerStats = () => {
     return useQuery({
       queryKey: ['customer-stats'],
-      // FIX: Changed path from '/stats/customers' to the correct '/customers/stats'
-      queryFn: () => apiService.get('/customers/stats'),
+      // FIX: Changed path to match backend route structure
+      queryFn: () => apiService.getCustomerStats(),
     })
   }
 
@@ -51,8 +51,8 @@ export const useAPI = () => {
   const useSegmentStats = () => {
     return useQuery({
       queryKey: ['segment-stats'],
-      // FIX: Changed path from '/stats/segments' to the correct '/segments/stats'
-      queryFn: () => apiService.get('/segments/stats'),
+      // FIX: Changed path to match backend route structure
+      queryFn: () => apiService.getSegmentStats(),
     })
   }
 
@@ -69,7 +69,7 @@ export const useAPI = () => {
 
   const useUpdateSegment = () => {
     return useMutation({
-      mutationFn: ({ id, data }: { id: number; data: any }) => 
+      mutationFn: ({ id, data }: { id: number; data: any }) =>
         apiService.updateSegment(id, data),
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: ['segments'] })
@@ -115,8 +115,8 @@ export const useAPI = () => {
   const useCampaignStats = () => {
     return useQuery({
       queryKey: ['campaign-stats'],
-      // FIX: Changed path from '/stats/campaigns' to the correct '/campaigns/stats'
-      queryFn: () => apiService.get('/campaigns/stats'),
+      // FIX: Changed path to match backend route structure
+      queryFn: () => apiService.getCampaignStats(),
     })
   }
 
@@ -156,12 +156,45 @@ export const useAPI = () => {
     })
   }
 
+  // Orders
+  const useOrders = (params?: any) => {
+    return useQuery({
+      queryKey: ['orders', params],
+      queryFn: () => apiService.getOrders(params),
+    })
+  }
+
+  const useOrder = (id: number) => {
+    return useQuery({
+      queryKey: ['order', id],
+      queryFn: () => apiService.getOrderById(id),
+      enabled: !!id,
+    })
+  }
+
+  const useOrderStats = () => {
+    return useQuery({
+      queryKey: ['order-stats'],
+      queryFn: () => apiService.getOrderStats(),
+    })
+  }
+
+  const useCreateOrder = () => {
+    return useMutation({
+      mutationFn: apiService.createOrder,
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: ['orders'] })
+        queryClient.invalidateQueries({ queryKey: ['order-stats'] })
+        toast.success('Order created successfully!')
+      },
+    })
+  }
+
   return {
     // Customers
     useCustomers,
     useCustomerStats,
     useCreateCustomer,
-    
     // Segments
     useSegments,
     useSegment,
@@ -170,7 +203,6 @@ export const useAPI = () => {
     useUpdateSegment,
     useDeleteSegment,
     usePreviewAudience,
-    
     // Campaigns
     useCampaigns,
     useCampaign,
@@ -179,5 +211,10 @@ export const useAPI = () => {
     useLaunchCampaign,
     useGenerateAIMessages,
     useCampaignInsights,
+    // Orders
+    useOrders,
+    useOrder,
+    useOrderStats,
+    useCreateOrder,
   }
 }

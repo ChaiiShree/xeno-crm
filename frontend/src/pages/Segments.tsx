@@ -2,7 +2,6 @@ import React, { useState } from 'react'
 import { Plus, Search, Target, Sparkles } from 'lucide-react'
 import { useAPI } from '../hooks/useAPI'
 import { useRuleBuilder } from '../hooks/useRuleBuilder'
-// FIX: Import RuleCondition type for better typing
 import type { CreateSegmentRequest, Segment, SegmentRules, RuleCondition } from '../types/segment'
 import Button from '../components/ui/Button'
 import Input from '../components/ui/Input'
@@ -26,51 +25,79 @@ const Segments: React.FC = () => {
   const { data, isLoading } = useSegments({ search })
   const createMutation = useCreateSegment()
   const deleteMutation = useDeleteSegment()
+  const { rules, setRules, resetRules, isValidRules } = useRuleBuilder()
 
-  const {
-    rules,
-    setRules,
-    resetRules,
-    isValidRules
-  } = useRuleBuilder()
-
+  // FIX: Ensure proper rule validation and structure
   const handleCreateSegment = () => {
-    const payload: CreateSegmentRequest = {
-      name: formData.name,
-      description: formData.description
+    // Validate required fields
+    if (!formData.name.trim()) {
+      toast.error('Segment name is required');
+      return;
     }
 
-    if (createMethod === 'manual') {
-      payload.rules = rules
-    } else {
-      // For AI method, the rules are already in the 'rules' state
-      payload.rules = rules
+    if (!formData.description.trim()) {
+      toast.error('Segment description is required');
+      return;
     }
+
+    // Validate rules structure for backend
+    if (!isValidRules()) {
+      toast.error('Please provide valid segmentation rules');
+      return;
+    }
+
+    // Ensure rules have the correct structure expected by backend
+    const validatedRules = {
+      operator: rules.operator || 'AND',
+      conditions: rules.conditions || []
+    };
+
+    // Ensure conditions array is not empty
+    if (validatedRules.conditions.length === 0) {
+      toast.error('At least one condition is required');
+      return;
+    }
+
+    const payload: CreateSegmentRequest = {
+      name: formData.name.trim(),
+      description: formData.description.trim(),
+      rules: validatedRules
+    };
 
     createMutation.mutate(payload, {
       onSuccess: () => {
         setShowCreateModal(false)
         resetForm()
+      },
+      onError: (error: any) => {
+        console.error('Segment creation failed:', error);
+        toast.error(error.response?.data?.error || 'Failed to create segment');
       }
     })
   }
 
-  // FIX: Corrected the type for the 'segment' parameter.
+  // FIX: Proper handling of AI-generated segments
   const handleSegmentGenerated = (segment: {
-  conditions: RuleCondition[];
-  suggestedName?: string;
-  explanation?: string;
-}) => {
-  console.log('Generated segment:', segment);
-  // This line is the critical fix
-  setRules({ operator: 'AND', conditions: segment.conditions || [] });
-
-  setFormData(prev => ({ 
-    ...prev, 
-    name: prev.name || segment.suggestedName || 'AI Generated Segment',
-    description: prev.description || segment.explanation || ''
-  }));
-};
+    conditions: RuleCondition[];
+    suggestedName?: string;
+    explanation?: string;
+  }) => {
+    console.log('Generated segment:', segment);
+    
+    // Ensure conditions are properly structured
+    const validConditions = segment.conditions || [];
+    
+    setRules({
+      operator: 'AND',
+      conditions: validConditions
+    });
+    
+    setFormData(prev => ({
+      ...prev,
+      name: prev.name || segment.suggestedName || 'AI Generated Segment',
+      description: prev.description || segment.explanation || ''
+    }));
+  };
 
   const resetForm = () => {
     setFormData({
@@ -92,8 +119,8 @@ const Segments: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <LoadingSpinner size="lg" />
+      <div className="flex justify-center items-center h-64">
+        <LoadingSpinner />
       </div>
     )
   }
@@ -101,14 +128,14 @@ const Segments: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Customer Segments</h1>
           <p className="text-gray-600">Create targeted customer groups for personalized campaigns</p>
         </div>
         <Button
           onClick={() => setShowCreateModal(true)}
-          leftIcon={<Plus />}
+          leftIcon={<Plus className="w-4 h-4" />}
           className="bg-primary-600 hover:bg-primary-700"
         >
           Create Segment
@@ -116,153 +143,149 @@ const Segments: React.FC = () => {
       </div>
 
       {/* Search */}
-      <Input
-        placeholder="Search segments..."
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        leftIcon={<Search />}
-      />
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+        <Input
+          placeholder="Search segments..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="pl-10"
+        />
+      </div>
 
-      {/* Segments Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {segments.length === 0 ? (
-          <div className="col-span-full text-center py-12">
-            <Target className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">No segments found</h3>
-            <p className="text-gray-600 mb-6">
-              {search
-                ? 'No segments match your search criteria.'
-                : 'Create your first customer segment to get started with targeted campaigns.'
-              }
-            </p>
-            <Button
-              onClick={() => setShowCreateModal(true)}
-              leftIcon={<Plus />}
-              className="bg-primary-600 hover:bg-primary-700"
-            >
-              Create Segment
-            </Button>
-          </div>
-        ) : (
-          segments.map((segment: Segment) => (
-            <div key={segment.id} className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg transition-shadow">
-              <div className="flex items-center justify-between mb-4">
-                <div className="text-2xl font-bold text-primary-600">
-                  {segment.audienceSize.toLocaleString()}
+      {/* Segments List */}
+      {segments.length === 0 ? (
+        <div className="text-center py-12">
+          <Target className="mx-auto w-12 h-12 text-gray-400 mb-4" />
+          <h3 className="text-lg font-medium text-gray-900 mb-2">No segments found</h3>
+          <p className="text-gray-500">
+            {search ? 'No segments match your search criteria.' : 'Create your first customer segment to get started with targeted campaigns.'}
+          </p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {segments.map((segment: Segment) => (
+            <div key={segment.id} className="bg-white rounded-lg border border-gray-200 p-6">
+              <div className="flex justify-between items-start mb-4">
+                <div>
+                  <h3 className="font-semibold text-gray-900">{segment.name}</h3>
+                  <p className="text-sm text-gray-500 mt-1">{segment.description}</p>
                 </div>
-                <span className="text-sm text-gray-500">customers</span>
-              </div>
-              
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">{segment.name}</h3>
-              
-              {segment.description && (
-                <p className="text-gray-600 text-sm mb-4">{segment.description}</p>
-              )}
-              
-              <div className="text-xs text-gray-500 mb-4">
-                Created {new Date(segment.createdAt).toLocaleDateString()}
-              </div>
-              
-              <div className="flex space-x-2">
-                <Button variant="ghost" size="sm">Edit</Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
+                <button
                   onClick={() => handleDelete(segment.id)}
-                  className="text-red-600 hover:bg-red-50"
+                  className="text-red-400 hover:text-red-600"
                 >
-                  Delete
-                </Button>
+                  <Plus className="w-4 h-4 transform rotate-45" />
+                </button>
+              </div>
+              <div className="flex items-center justify-between text-sm text-gray-500">
+                <span>{segment.audienceSize?.toLocaleString()} customers</span>
+                <span>{new Date(segment.createdAt).toLocaleDateString()}</span>
               </div>
             </div>
-          ))
-        )}
-      </div>
+          ))}
+        </div>
+      )}
 
       {/* Create Segment Modal */}
       <Modal
-        isOpen={showCreateModal}
+        open={showCreateModal}
         onClose={() => {
           setShowCreateModal(false)
           resetForm()
         }}
         title="Create New Segment"
-        size="2xl"
+        size="xl"
       >
-        <div className="p-6 space-y-6">
-          {/* Basic Info */}
-          <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Segment Name
-              </label>
-              <Input
-                value={formData.name}
-                onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
-                placeholder="e.g., High Value Customers"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Description (Optional)
-              </label>
-              <Input
-                value={formData.description}
-                onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
-                placeholder="Describe this customer segment..."
-              />
-            </div>
-          </div>
-
-
+        <div className="space-y-6">
           {/* Method Selection */}
-          <div className="bg-gray-50 p-1 rounded-lg flex space-x-1">
+          <div className="flex space-x-4">
             <button
               onClick={() => setCreateMethod('manual')}
-              className={`flex-1 px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 ${
+              className={`flex-1 p-4 rounded-lg border-2 transition-colors ${
                 createMethod === 'manual'
-                  ? 'bg-white text-primary-700 shadow-sm'
-                  : 'text-gray-600 hover:text-gray-900'
+                  ? 'border-primary-500 bg-primary-50'
+                  : 'border-gray-200 hover:border-gray-300'
               }`}
             >
-              Manual Rules
+              <Target className="w-6 h-6 mx-auto mb-2" />
+              <div className="font-medium">Manual Rules</div>
+              <div className="text-sm text-gray-500">Build segment with conditions</div>
             </button>
             <button
               onClick={() => setCreateMethod('ai')}
-              className={`flex-1 px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 flex items-center justify-center space-x-2 ${
+              className={`flex-1 p-4 rounded-lg border-2 transition-colors ${
                 createMethod === 'ai'
-                  ? 'bg-white text-primary-700 shadow-sm'
-                  : 'text-gray-600 hover:text-gray-900'
+                  ? 'border-primary-500 bg-primary-50'
+                  : 'border-gray-200 hover:border-gray-300'
               }`}
             >
-              <Sparkles className="w-4 h-4" />
-              <span>AI Assistant</span>
+              <Sparkles className="w-6 h-6 mx-auto mb-2" />
+              <div className="font-medium">AI Assistant</div>
+              <div className="text-sm text-gray-500">Describe in natural language</div>
             </button>
+          </div>
+
+          {/* Form Fields */}
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Segment Name
+              </label>
+              <Input
+                placeholder="Enter segment name"
+                value={formData.name}
+                onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Description
+              </label>
+              <textarea
+                placeholder="Describe this segment"
+                value={formData.description}
+                onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+                rows={3}
+              />
+            </div>
           </div>
 
           {/* Rule Builder or NLP Input */}
           {createMethod === 'manual' ? (
-            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-              <RuleBuilder
-                initialRules={rules}
-                onChange={setRules}
-              />
-              <AudiencePreview
-                rules={rules}
-                isValidRules={isValidRules()}
-              />
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Segmentation Rules
+              </label>
+              <RuleBuilder rules={rules} onChange={setRules} />
             </div>
           ) : (
-            <NLPQueryInput
-              onSegmentGenerated={handleSegmentGenerated}
-            />
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Describe Your Audience
+              </label>
+              <NLPQueryInput
+                onSegmentGenerated={handleSegmentGenerated}
+                placeholder="e.g., Customers who spent more than $500 in the last 6 months"
+              />
+            </div>
+          )}
+
+          {/* Audience Preview */}
+          {isValidRules() && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Audience Preview
+              </label>
+              <AudiencePreview rules={rules} />
+            </div>
           )}
 
           {/* Actions */}
-          <div className="flex justify-end space-x-3 pt-4 border-t">
+          <div className="flex justify-end space-x-3 pt-6 border-t">
             <Button
-              variant="ghost"
+              variant="outline"
               onClick={() => {
                 setShowCreateModal(false)
                 resetForm()
@@ -272,9 +295,8 @@ const Segments: React.FC = () => {
             </Button>
             <Button
               onClick={handleCreateSegment}
-              disabled={!formData.name || !isValidRules()}
+              disabled={!formData.name || !formData.description || !isValidRules() || createMutation.isPending}
               loading={createMutation.isPending}
-              className="bg-primary-600 hover:bg-primary-700"
             >
               Create Segment
             </Button>

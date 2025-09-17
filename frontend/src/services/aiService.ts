@@ -3,7 +3,15 @@ import apiService from './api'
 class AIService {
   async generateSegmentFromNLP(nlpQuery: string) {
     try {
-      const response = await apiService.previewAudience({ nlpQuery })
+      // FIX: Use correct endpoint structure for AI segment generation
+      const response = await apiService.previewAudience({ 
+        nlpQuery,
+        // Ensure we're sending the expected structure
+        rules: {
+          operator: 'AND',
+          conditions: []
+        }
+      })
       return response
     } catch (error) {
       console.error('AI segment generation error:', error)
@@ -13,11 +21,14 @@ class AIService {
 
   async generateCampaignMessages(segmentId: number, campaignObjective: string) {
     try {
+      // FIX: Ensure payload matches backend expectations
       const response = await apiService.generateAIMessages({
         segmentId,
-        campaignObjective
+        campaignObjective,
+        // Include additional context if needed by backend
+        messageCount: 3 // Default to 3 message variants
       })
-      return response.messages
+      return response.messages || response // Handle different response structures
     } catch (error) {
       console.error('AI message generation error:', error)
       throw error
@@ -27,7 +38,7 @@ class AIService {
   async getCampaignInsights(campaignId: number) {
     try {
       const response = await apiService.getCampaignInsights(campaignId)
-      return response.insights
+      return response.insights || response // Handle different response structures
     } catch (error) {
       console.error('AI insights error:', error)
       throw error
