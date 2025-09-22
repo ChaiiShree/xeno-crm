@@ -65,7 +65,6 @@ const Segments: React.FC = () => {
 
   const handleCreateSegment = async () => {
   try {
-    // Validate required fields
     if (!formData.name.trim()) {
       toast.error('Segment name is required');
       return;
@@ -75,34 +74,28 @@ const Segments: React.FC = () => {
       return;
     }
 
-    // --- Start of Corrected Logic ---
-
     const payload: CreateSegmentRequest = {
       name: formData.name.trim(),
       description: formData.description.trim(),
     };
 
-    // Always attach the rules if they are valid.
-    // This works for both "manual" mode and for "ai" mode after the AI has generated rules.
-    if (isValidRules()) {
+    // FIXED: Always include rules if they exist (from manual or AI generation)
+    if (isValidRules() && rules) {
       payload.rules = rules;
     }
 
-    // If in AI mode, also attach the nlpQuery for record-keeping.
+    // FIXED: Include nlpQuery for AI mode 
     if (createMethod === 'ai' && formData.nlpQuery.trim()) {
       payload.nlpQuery = formData.nlpQuery.trim();
     }
 
-    // Final validation to ensure we have something to create the segment with.
+    // FIXED: Ensure we have either rules or nlpQuery
     if (!payload.rules && !payload.nlpQuery) {
       toast.error('Please define segment rules or provide an AI query.');
       return;
     }
 
-    // --- End of Corrected Logic ---
-
     console.log('Creating segment with payload:', payload);
-
     await createMutation.mutateAsync(payload);
     toast.success('Segment created successfully!');
     setShowCreateModal(false);

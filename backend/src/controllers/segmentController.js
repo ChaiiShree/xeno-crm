@@ -12,6 +12,7 @@ const createSegment = async (req, res) => {
     const userId = req.user.id;
 
     if (!name || (!rules && !nlpQuery)) {
+      await client.query('ROLLBACK');
       return res.status(400).json({
         success: false,
         error: 'Name and either rules or an NLP query are required'
@@ -20,11 +21,12 @@ const createSegment = async (req, res) => {
 
     let finalRules = rules;
 
-    // If rules are not provided, generate them from the NLP query.
+    // If rules are not provided, generate them from the NLP query
     if (nlpQuery && !finalRules) {
       try {
         console.log('🤖 Converting NLP query to rules:', nlpQuery);
         finalRules = await generateSegmentFromNLP(nlpQuery);
+        console.log('✅ AI generated rules:', JSON.stringify(finalRules, null, 2));
       } catch (aiError) {
         console.error('❌ AI conversion failed:', aiError);
         await client.query('ROLLBACK');
@@ -35,60 +37,67 @@ const createSegment = async (req, res) => {
       }
     }
 
-    // --- START OF THE CORRECTED LOGIC ---
-    // This mapping logic now runs on ALL rules, fixing the bug.
+    // Map AI-generated field names to database column names
     if (finalRules && finalRules.conditions) {
       console.log('✅ Rules before mapping:', JSON.stringify(finalRules, null, 2));
       finalRules.conditions = finalRules.conditions.map(condition => {
         const fieldMapping = {
           'totalSpend': 'total_spend',
-          'lastOrderDate': 'last_visit',
           'visitCount': 'visit_count',
+          'lastVisit': 'last_visit'
         };
-        return {
-          ...condition,
-          field: fieldMapping[condition.field] || condition.field
-        };
+
+        if (fieldMapping[condition.field]) {
+          condition.field = fieldMapping[condition.field];
+        }
+        return condition;
       });
       console.log('✅ Rules after mapping:', JSON.stringify(finalRules, null, 2));
     }
-    // --- END OF THE CORRECTED LOGIC ---
 
+    // Validate the final rules structure
     if (!finalRules || !finalRules.conditions || !Array.isArray(finalRules.conditions)) {
       await client.query('ROLLBACK');
       return res.status(400).json({
         success: false,
-        error: 'Invalid rules structure after processing'
+        error: 'Invalid rules structure. Expected an object with conditions array.'
       });
     }
 
+    // Calculate audience size
     const audienceSize = await evaluateRules(finalRules);
-    const newSegment = await client.query(
-      `INSERT INTO segments (name, description, rules_json, created_by, audience_size)
-       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+
+    // FIXED: Use correct column names matching database schema
+    const insertResult = await client.query(
+      'INSERT INTO segments (name, description, rules_json, created_by, audience_size, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, NOW(), NOW()) RETURNING *',
       [name, description, JSON.stringify(finalRules), userId, audienceSize]
     );
 
+    const newSegment = insertResult.rows[0];
+
     await client.query('COMMIT');
-    console.log('✅ Segment created:', name, 'Audience size:', audienceSize);
 
     res.status(201).json({
       success: true,
       message: 'Segment created successfully',
       segment: {
-        ...newSegment.rows[0],
-        rules_json: finalRules,
-        nlp_query: nlpQuery || null
+        id: newSegment.id,
+        name: newSegment.name,
+        description: newSegment.description,
+        rules: newSegment.rules_json,
+        createdBy: newSegment.created_by,
+        audienceSize: newSegment.audience_size,
+        createdAt: newSegment.created_at,
+        updatedAt: newSegment.updated_at
       }
     });
 
   } catch (error) {
     await client.query('ROLLBACK');
-    console.error('❌ Create segment error:', error);
+    console.error('❌ Error creating segment:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to create segment due to an internal error.',
-      details: error.message
+      error: 'Internal server error'
     });
   } finally {
     client.release();
@@ -97,15 +106,9 @@ const createSegment = async (req, res) => {
 
 const getSegments = async (req, res) => {
   try {
-    const {
-      page = 1,
-      limit = 10,
-      search = '',
-      sortBy = 'created_at',
-      sortOrder = 'DESC'
-    } = req.query;
-    const offset = (parseInt(page) - 1) * parseInt(limit);
     const userId = req.user.id;
+    const { page = 1, limit = 10, search = '', sortBy = 'created_at', sortOrder = 'DESC' } = req.query;
+    const offset = (parseInt(page) - 1) * parseInt(limit);
 
     let query = `
       SELECT s.*, u.name as created_by_name, u.email as created_by_email
@@ -216,7 +219,7 @@ const previewAudience = async (req, res) => {
 
     let finalRules = rules;
 
-    // If rules are not provided, generate them from the NLP query.
+    // If rules are not provided, generate them from the NLP query
     if (nlpQuery && !finalRules) {
       try {
         finalRules = await generateSegmentFromNLP(nlpQuery);
@@ -229,22 +232,22 @@ const previewAudience = async (req, res) => {
       }
     }
 
-    // This mapping logic now runs on ALL rules, making it more robust.
+    // Map field names
     if (finalRules && finalRules.conditions) {
       finalRules.conditions = finalRules.conditions.map(condition => {
         const fieldMapping = {
           'totalSpend': 'total_spend',
-          'lastOrderDate': 'last_visit',
-          'visitCount': 'visit_count'
+          'visitCount': 'visit_count',
+          'lastVisit': 'last_visit'
         };
-        return {
-          ...condition,
-          field: fieldMapping[condition.field] || condition.field
-        };
+
+        if (fieldMapping[condition.field]) {
+          condition.field = fieldMapping[condition.field];
+        }
+        return condition;
       });
     }
 
-    // Now, we can be confident finalRules are always correctly formatted.
     const audienceSize = await evaluateRules(finalRules);
     const sampleCustomers = await evaluateRules(finalRules, 10, true);
 
