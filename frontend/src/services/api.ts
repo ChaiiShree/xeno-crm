@@ -5,7 +5,7 @@ import toast from 'react-hot-toast';
 
 // The base Axios instance is now kept private to this module
 const axiosInstance: AxiosInstance = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000',
+  baseURL: `${import.meta.env.VITE_API_URL || 'http://localhost:7860'}/api`,
   withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
