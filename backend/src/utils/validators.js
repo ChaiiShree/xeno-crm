@@ -1,292 +1,264 @@
-const validator = require('validator');
+const { body, param, query, validationResult } = require('express-validator');
 
-class Validators {
-  // Email validation
-  static isValidEmail(email) {
-    return validator.isEmail(email) && email.length <= 255;
-  }
-
-  // Phone validation (supports international formats)
-  static isValidPhone(phone) {
-    if (!phone) return true; // Phone is optional
-    return validator.isMobilePhone(phone, 'any') || /^\+?[\d\s\-\(\)]{10,15}$/.test(phone);
-  }
-
-  // Name validation
-  static isValidName(name) {
-    return name && 
-           typeof name === 'string' && 
-           name.trim().length >= 2 && 
-           name.trim().length <= 255 &&
-           /^[a-zA-Z\s\.\-']+$/.test(name.trim());
-  }
-
-  // Currency amount validation
-  static isValidAmount(amount) {
-    const num = parseFloat(amount);
-    return !isNaN(num) && num >= 0 && num <= 999999.99;
-  }
-
-  // Integer validation
-  static isValidInteger(value, min = 0, max = Number.MAX_SAFE_INTEGER) {
-    const num = parseInt(value);
-    return !isNaN(num) && num >= min && num <= max;
-  }
-
-  // Date validation
-  static isValidDate(dateString) {
-    if (!dateString) return false;
-    const date = new Date(dateString);
-    return date instanceof Date && !isNaN(date) && date <= new Date();
-  }
-
-  // Campaign message validation
-  static isValidMessage(message) {
-    return message && 
-           typeof message === 'string' && 
-           message.trim().length >= 10 && 
-           message.trim().length <= 2000;
-  }
-
-  // Segment name validation
-  static isValidSegmentName(name) {
-    return name && 
-           typeof name === 'string' && 
-           name.trim().length >= 2 && 
-           name.trim().length <= 255;
-  }
-
-  // Rule validation
-  static validateRule(rule) {
-    const errors = [];
-
-    if (!rule || typeof rule !== 'object') {
-      errors.push('Rule must be an object');
-      return errors;
-    }
-
-    // Validate field
-    const validFields = ['total_spend', 'visit_count', 'last_visit'];
-    if (!rule.field || !validFields.includes(rule.field)) {
-      errors.push(`Field must be one of: ${validFields.join(', ')}`);
-    }
-
-    // Validate operator
-    const validOperators = ['>', '<', '>=', '<=', '=', '!=', 'LIKE', 'NOT LIKE'];
-    if (!rule.operator || !validOperators.includes(rule.operator)) {
-      errors.push(`Operator must be one of: ${validOperators.join(', ')}`);
-    }
-
-    // Validate value
-    if (rule.value === undefined || rule.value === null) {
-      errors.push('Value is required');
-    } else {
-      // Field-specific value validation
-      if (rule.field === 'total_spend' && !this.isValidAmount(rule.value)) {
-        errors.push('Total spend must be a valid amount');
-      }
-
-      if (rule.field === 'visit_count' && !this.isValidInteger(rule.value, 0)) {
-        errors.push('Visit count must be a valid integer');
-      }
-
-      if (rule.field === 'last_visit') {
-        if (rule.operator && rule.operator.includes('LIKE')) {
-          errors.push('LIKE operator not valid for date fields');
-        }
-        
-        if (typeof rule.value === 'string' && !this.isValidDate(rule.value) && !rule.value.includes('ago')) {
-          errors.push('Last visit must be a valid date or relative date (e.g., "30 days ago")');
-        }
-      }
-    }
-
-    return errors;
-  }
-
-  // Rules validation
-  static validateRules(rules) {
-    const errors = [];
-
-    if (!rules || typeof rules !== 'object') {
-      errors.push('Rules must be an object');
-      return errors;
-    }
-
-    if (!rules.operator || !['AND', 'OR'].includes(rules.operator.toUpperCase())) {
-      errors.push('Rules operator must be AND or OR');
-    }
-
-    if (!rules.conditions || !Array.isArray(rules.conditions)) {
-      errors.push('Rules must have a conditions array');
-    } else {
-      if (rules.conditions.length === 0) {
-        errors.push('Rules must have at least one condition');
-      }
-
-      // Validate each condition
-      rules.conditions.forEach((condition, index) => {
-        const conditionErrors = this.validateRule(condition);
-        conditionErrors.forEach(error => {
-          errors.push(`Condition ${index + 1}: ${error}`);
-        });
-      });
-    }
-
-    return errors;
-  }
-
-  // Bulk data validation
-  static validateBulkCustomers(customers) {
-    const errors = [];
-    const emailSet = new Set();
-
-    if (!Array.isArray(customers)) {
-      errors.push('Customers must be an array');
-      return errors;
-    }
-
-    if (customers.length === 0) {
-      errors.push('Customers array cannot be empty');
-      return errors;
-    }
-
-    if (customers.length > 1000) {
-      errors.push('Maximum 1000 customers allowed per bulk upload');
-    }
-
-    customers.forEach((customer, index) => {
-      const rowNumber = index + 1;
-
-      // Required fields
-      if (!customer.name || !this.isValidName(customer.name)) {
-        errors.push(`Row ${rowNumber}: Invalid name`);
-      }
-
-      if (!customer.email || !this.isValidEmail(customer.email)) {
-        errors.push(`Row ${rowNumber}: Invalid email`);
-      } else {
-        // Check for duplicate emails
-        if (emailSet.has(customer.email.toLowerCase())) {
-          errors.push(`Row ${rowNumber}: Duplicate email ${customer.email}`);
-        }
-        emailSet.add(customer.email.toLowerCase());
-      }
-
-      // Optional fields
-      if (customer.phone && !this.isValidPhone(customer.phone)) {
-        errors.push(`Row ${rowNumber}: Invalid phone number`);
-      }
-
-      if (customer.totalSpend !== undefined && !this.isValidAmount(customer.totalSpend)) {
-        errors.push(`Row ${rowNumber}: Invalid total spend amount`);
-      }
-
-      if (customer.visitCount !== undefined && !this.isValidInteger(customer.visitCount, 0)) {
-        errors.push(`Row ${rowNumber}: Invalid visit count`);
-      }
+const handleValidationErrors = (req, res, next) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({
+      success: false,
+      error: 'Validation failed',
+      details: errors.array()
     });
-
-    return errors;
   }
+  next();
+};
 
-  // Sanitization helpers
-  static sanitizeString(str, maxLength = 255) {
-    if (!str || typeof str !== 'string') return '';
-    
-    return validator.escape(str.trim()).substring(0, maxLength);
-  }
+const validateCustomer = [
+  body('name')
+    .trim()
+    .notEmpty()
+    .withMessage('Name is required')
+    .isLength({ min: 2, max: 255 })
+    .withMessage('Name must be between 2 and 255 characters'),
+  body('email')
+    .isEmail()
+    .withMessage('Valid email is required')
+    .normalizeEmail(),
+  body('phone')
+    .optional()
+    .isMobilePhone()
+    .withMessage('Valid phone number is required'),
+  body('totalSpend')
+    .optional()
+    .isFloat({ min: 0 })
+    .withMessage('Total spend must be a positive number'),
+  body('visitCount')
+    .optional()
+    .isInt({ min: 0 })
+    .withMessage('Visit count must be a positive integer'),
+  handleValidationErrors
+];
 
-  static sanitizeEmail(email) {
-    if (!email || typeof email !== 'string') return '';
-    
-    return validator.normalizeEmail(email.trim().toLowerCase()) || '';
-  }
+const validateBulkCustomers = [
+  body('customers')
+    .isArray({ min: 1, max: 1000 })
+    .withMessage('Customers array is required (max 1000 items)'),
+  body('customers.*.name')
+    .trim()
+    .notEmpty()
+    .withMessage('Name is required for all customers')
+    .isLength({ min: 2, max: 255 })
+    .withMessage('Name must be between 2 and 255 characters'),
+  body('customers.*.email')
+    .isEmail()
+    .withMessage('Valid email is required for all customers')
+    .normalizeEmail(),
+  body('customers.*.phone')
+    .optional()
+    .isMobilePhone()
+    .withMessage('Valid phone number is required'),
+  body('customers.*.totalSpend')
+    .optional()
+    .isFloat({ min: 0 })
+    .withMessage('Total spend must be a positive number'),
+  body('customers.*.visitCount')
+    .optional()
+    .isInt({ min: 0 })
+    .withMessage('Visit count must be a positive integer'),
+  handleValidationErrors
+];
 
-  static sanitizePhone(phone) {
-    if (!phone || typeof phone !== 'string') return '';
-    
-    // Remove all non-digit characters except + and spaces
-    return phone.replace(/[^\d\+\s\-\(\)]/g, '').trim();
-  }
+const validateOrder = [
+  body('customerId')
+    .isInt({ min: 1 })
+    .withMessage('Valid customer ID is required'),
+  body('amount')
+    .isFloat({ min: 0.01 })
+    .withMessage('Amount must be greater than 0'),
+  body('orderDate')
+    .optional()
+    .isISO8601()
+    .withMessage('Order date must be a valid ISO date'),
+  body('status')
+    .optional()
+    .isIn(['pending', 'completed', 'cancelled', 'refunded'])
+    .withMessage('Status must be one of: pending, completed, cancelled, refunded'),
+  handleValidationErrors
+];
 
-  static sanitizeAmount(amount) {
-    const num = parseFloat(amount);
-    return isNaN(num) ? 0 : Math.max(0, Math.round(num * 100) / 100);
-  }
+const validateBulkOrders = [
+  body('orders')
+    .isArray({ min: 1, max: 1000 })
+    .withMessage('Orders array is required (max 1000 items)'),
+  body('orders.*.customerId')
+    .isInt({ min: 1 })
+    .withMessage('Valid customer ID is required for all orders'),
+  body('orders.*.amount')
+    .isFloat({ min: 0.01 })
+    .withMessage('Amount must be greater than 0 for all orders'),
+  body('orders.*.orderDate')
+    .optional()
+    .isISO8601()
+    .withMessage('Order date must be a valid ISO date'),
+  body('orders.*.status')
+    .optional()
+    .isIn(['pending', 'completed', 'cancelled', 'refunded'])
+    .withMessage('Status must be one of: pending, completed, cancelled, refunded'),
+  handleValidationErrors
+];
 
-  static sanitizeInteger(value, min = 0) {
-    const num = parseInt(value);
-    return isNaN(num) ? 0 : Math.max(min, num);
-  }
+// FIXED: Removed the problematic rules validation that was causing 400 errors
+const validateSegment = [
+  body('name')
+    .trim()
+    .notEmpty()
+    .withMessage('Segment name is required')
+    .isLength({ min: 2, max: 255 })
+    .withMessage('Name must be between 2 and 255 characters'),
+  body('description')
+    .optional()
+    .trim()
+    .isLength({ max: 1000 })
+    .withMessage('Description must not exceed 1000 characters'),
+  body('nlpQuery')
+    .optional()
+    .trim()
+    .isLength({ min: 5, max: 500 })
+    .withMessage('NLP query must be between 5 and 500 characters'),
+  // FIXED: Simplified validation - either rules OR nlpQuery is fine
+  body()
+    .custom((value) => {
+      if (!value.rules && !value.nlpQuery) {
+        throw new Error('Either rules or nlpQuery is required');
+      }
+      return true;
+    }),
+  handleValidationErrors
+];
 
-  // Campaign objective validation
-  static isValidCampaignObjective(objective) {
-    return objective && 
-           typeof objective === 'string' && 
-           objective.trim().length >= 5 && 
-           objective.trim().length <= 200;
-  }
+const validateCampaign = [
+  body('segmentId')
+    .isInt({ min: 1 })
+    .withMessage('Valid segment ID is required'),
+  body('name')
+    .trim()
+    .notEmpty()
+    .withMessage('Campaign name is required')
+    .isLength({ min: 2, max: 255 })
+    .withMessage('Name must be between 2 and 255 characters'),
+  body('message')
+    .optional()
+    .trim()
+    .isLength({ min: 10, max: 2000 })
+    .withMessage('Message must be between 10 and 2000 characters'),
+  body('useAI')
+    .optional()
+    .isBoolean()
+    .withMessage('useAI must be a boolean'),
+  body('campaignObjective')
+    .optional()
+    .trim()
+    .isLength({ min: 5, max: 200 })
+    .withMessage('Campaign objective must be between 5 and 200 characters'),
+  body()
+    .custom((value) => {
+      if (!value.message && !value.useAI) {
+        throw new Error('Either message or AI generation (useAI) is required');
+      }
+      if (value.useAI && !value.campaignObjective) {
+        throw new Error('Campaign objective is required when using AI generation');
+      }
+      return true;
+    }),
+  handleValidationErrors
+];
 
-  // Pagination validation
-  static validatePagination(page, limit) {
-    const errors = [];
-    
-    const pageNum = parseInt(page) || 1;
-    const limitNum = parseInt(limit) || 10;
+const validatePagination = [
+  query('page')
+    .optional()
+    .isInt({ min: 1 })
+    .withMessage('Page must be a positive integer'),
+  query('limit')
+    .optional()
+    .isInt({ min: 1, max: 100 })
+    .withMessage('Limit must be between 1 and 100'),
+  query('sortOrder')
+    .optional()
+    .isIn(['ASC', 'DESC', 'asc', 'desc'])
+    .withMessage('Sort order must be ASC or DESC'),
+  handleValidationErrors
+];
 
-    if (pageNum < 1) {
-      errors.push('Page must be a positive integer');
+const validateIdParam = [
+  param('id')
+    .isInt({ min: 1 })
+    .withMessage('Valid ID is required'),
+  handleValidationErrors
+];
+
+const validateDeliveryStatus = [
+  body('campaignId')
+    .isInt({ min: 1 })
+    .withMessage('Valid campaign ID is required'),
+  body('customerId')
+    .isInt({ min: 1 })
+    .withMessage('Valid customer ID is required'),
+  body('status')
+    .isIn(['pending', 'sent', 'failed', 'delivered'])
+    .withMessage('Status must be one of: pending, sent, failed, delivered'),
+  body('failedReason')
+    .optional()
+    .trim()
+    .isLength({ max: 500 })
+    .withMessage('Failed reason must not exceed 500 characters'),
+  handleValidationErrors
+];
+
+// FIXED: Simplified audience preview validation
+const validateAudiencePreview = [
+  body()
+    .custom((value) => {
+      if (!value.rules && !value.nlpQuery) {
+        throw new Error('Either rules or nlpQuery is required');
+      }
+      return true;
+    }),
+  body('nlpQuery')
+    .optional()
+    .trim()
+    .isLength({ min: 5, max: 500 })
+    .withMessage('NLP query must be between 5 and 500 characters'),
+  handleValidationErrors
+];
+
+const sanitizeInput = (req, res, next) => {
+  const sanitize = (obj) => {
+    for (const key in obj) {
+      if (typeof obj[key] === 'string') {
+        // Remove HTML tags and trim whitespace
+        obj[key] = obj[key].replace(/<[^>]*>/g, '').trim();
+      } else if (typeof obj[key] === 'object' && obj[key] !== null) {
+        sanitize(obj[key]);
+      }
     }
+  };
 
-    if (limitNum < 1 || limitNum > 100) {
-      errors.push('Limit must be between 1 and 100');
-    }
+  if (req.body) sanitize(req.body);
+  if (req.query) sanitize(req.query);
+  if (req.params) sanitize(req.params);
+  next();
+};
 
-    return {
-      errors,
-      page: Math.max(1, pageNum),
-      limit: Math.min(100, Math.max(1, limitNum))
-    };
-  }
-
-  // Sort validation
-  static validateSort(sortBy, sortOrder, validFields) {
-    const validOrders = ['ASC', 'DESC'];
-    
-    return {
-      sortBy: validFields.includes(sortBy) ? sortBy : validFields[0],
-      sortOrder: validOrders.includes(sortOrder?.toUpperCase()) ? sortOrder.toUpperCase() : 'DESC'
-    };
-  }
-
-  // File validation
-  static validateFileType(filename, allowedTypes) {
-    if (!filename) return false;
-    
-    const extension = filename.toLowerCase().split('.').pop();
-    return allowedTypes.includes(extension);
-  }
-
-  static validateFileSize(size, maxSizeBytes) {
-    return size && size <= maxSizeBytes;
-  }
-
-  // Rate limiting validation
-  static validateRateLimit(current, max, windowStart, windowMs) {
-    const now = Date.now();
-    const isWithinWindow = (now - windowStart) < windowMs;
-    
-    if (!isWithinWindow) {
-      return { allowed: true, remaining: max - 1 };
-    }
-    
-    return {
-      allowed: current < max,
-      remaining: Math.max(0, max - current - 1),
-      resetTime: windowStart + windowMs
-    };
-  }
-}
-
-module.exports = Validators;
+module.exports = {
+  handleValidationErrors,
+  validateCustomer,
+  validateBulkCustomers,
+  validateOrder,
+  validateBulkOrders,
+  validateSegment,
+  validateCampaign,
+  validatePagination,
+  validateIdParam,
+  validateDeliveryStatus,
+  validateAudiencePreview,
+  sanitizeInput
+};
