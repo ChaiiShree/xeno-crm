@@ -1,16 +1,17 @@
 // src/services/auth.ts
-// FIX: Import the named export 'api' for direct axios instance usage.
+
 import { api } from './api';
 import type { User } from '../types/auth';
 
 class AuthService {
   getGoogleAuthUrl(): string {
-    return `${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/auth/google`;
+    // FIX: Added the '/api' prefix to match the backend's routing structure.
+    // Also updated the fallback port to 7860 for local development consistency.
+    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:7860';
+    return `${apiUrl}/api/auth/google`;
   }
   
-  // FIX: Added a method to handle the demo login functionality.
   handleDemoLogin(demoUser: User): void {
-    // For demo purposes, we simulate a successful login by setting local storage.
     localStorage.setItem('auth_token', 'demo-auth-token-is-not-real');
     localStorage.setItem('xeno_user', JSON.stringify(demoUser));
   }
@@ -41,7 +42,7 @@ class AuthService {
       try {
         return JSON.parse(userJson);
       } catch (e) {
-        // Corrupted JSON, proceed to fetch
+        // Corrupted JSON, proceed to fetch from API
       }
     }
     
@@ -53,6 +54,7 @@ class AuthService {
       return user;
     } catch (error) {
       console.error("Auth check with API failed:", error);
+      this.logout(); // Logout if the token is invalid
       return null;
     }
   }
@@ -63,18 +65,22 @@ class AuthService {
       return response.data.user;
     } catch (error) {
       console.error("Could not fetch current user:", error);
-      return null;
+      // The api interceptor will handle the logout on 401/403 errors.
+      throw error;
     }
   }
 
   async logout(): Promise<void> {
     try {
+      // Notify the backend to invalidate the session/token if applicable
       await api.post('/auth/logout');
     } catch (error) {
       console.error("Backend logout failed, clearing client-side anyway.", error);
     } finally {
+      // Always clear client-side credentials
       localStorage.removeItem('auth_token');
       localStorage.removeItem('xeno_user');
+      // Redirect to login to clear all application state
       window.location.href = '/login';
     }
   }

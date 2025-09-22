@@ -1,27 +1,13 @@
-import React from 'react'
-import { Chrome, Target, Mail, BarChart3, Shield } from 'lucide-react'
-import authService from '../../services/auth'
+// frontend/src/components/auth/Login.tsx
+
+import React from 'react';
+import { Target, Mail, BarChart3, Shield } from 'lucide-react';
+import authService from '../../services/auth';
 
 const Login: React.FC = () => {
   const handleGoogleLogin = () => {
-    window.location.href = authService.getGoogleAuthUrl()
-  }
-
-  const handleDemoLogin = () => {
-    const demoUser = {
-      id: 1,
-      name: 'Chaitanya',
-      email: 'chaitanyajayant2004@gmail.com',
-      profilePicture: 'https://via.placeholder.com/40',
-      createdAt: new Date().toISOString()
-    }
-    
-    // FIX: Changed handleAuthSuccess to the new handleDemoLogin method.
-    authService.handleDemoLogin(demoUser)
-
-    // FIX: Redirect to the dashboard instead of reloading the page.
-    window.location.href = '/'
-  }
+    window.location.href = authService.getGoogleAuthUrl();
+  };
 
   const features = [
     {
@@ -44,7 +30,7 @@ const Login: React.FC = () => {
       title: 'Secure & Reliable',
       description: 'Enterprise-grade security with Google OAuth authentication'
     }
-  ]
+  ];
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
@@ -75,7 +61,7 @@ const Login: React.FC = () => {
               {/* Features Grid */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                 {features.map((feature, index) => {
-                  const Icon = feature.icon
+                  const Icon = feature.icon;
                   return (
                     <div key={index} className="flex space-x-4">
                       <div className="flex-shrink-0">
@@ -88,7 +74,7 @@ const Login: React.FC = () => {
                         <p className="text-sm text-gray-600">{feature.description}</p>
                       </div>
                     </div>
-                  )
+                  );
                 })}
               </div>
             </div>
@@ -115,23 +101,6 @@ const Login: React.FC = () => {
                           <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
                         </svg>
                         <span>Continue with Google</span>
-                      </button>
-
-                      <div className="relative">
-                        <div className="absolute inset-0 flex items-center">
-                          <div className="w-full border-t border-gray-300"></div>
-                        </div>
-                        <div className="relative flex justify-center text-sm">
-                          <span className="px-2 bg-white text-gray-500">or</span>
-                        </div>
-                      </div>
-
-                      <button
-                        onClick={handleDemoLogin}
-                        className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white py-4 px-6 rounded-2xl transition-all duration-300 flex items-center justify-center space-x-3 font-medium shadow-lg hover:shadow-xl transform hover:scale-[1.02]"
-                      >
-                        <Chrome className="w-5 h-5" />
-                        <span>Demo Login</span>
                       </button>
                     </div>
 
@@ -160,7 +129,7 @@ const Login: React.FC = () => {
         </div>
       </div>
     </div>
-  )
-}
+  );
+};
 
-export default Login
+export default Login;
