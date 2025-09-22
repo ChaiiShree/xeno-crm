@@ -345,10 +345,6 @@ const Segments: React.FC = () => {
             </div>
           )}
 
-// Segments.tsx
-
-// ... inside the modal's JSX
-
 {/* Audience Preview */}
 {(isValidRules() || (createMethod === 'ai' && formData.nlpQuery)) && (
   <div>

@@ -3,10 +3,8 @@ const { evaluateRules } = require('../utils/ruleEngine');
 const { generateSegmentFromNLP } = require('../services/aiService');
 
 // File: segmentController.js
-
 const createSegment = async (req, res) => {
   const client = await pool.connect();
-  
   try {
     await client.query('BEGIN');
 
@@ -24,38 +22,40 @@ const createSegment = async (req, res) => {
 
     // If rules are not provided, generate them from the NLP query.
     if (nlpQuery && !finalRules) {
-        try {
-            console.log('🤖 Converting NLP query to rules:', nlpQuery);
-            finalRules = await generateSegmentFromNLP(nlpQuery);
-        } catch (aiError) {
-            console.error('❌ AI conversion failed:', aiError);
-            return res.status(400).json({
-                success: false,
-                error: 'Failed to convert natural language query to rules'
-            });
-        }
+      try {
+        console.log('🤖 Converting NLP query to rules:', nlpQuery);
+        finalRules = await generateSegmentFromNLP(nlpQuery);
+      } catch (aiError) {
+        console.error('❌ AI conversion failed:', aiError);
+        await client.query('ROLLBACK');
+        return res.status(400).json({
+          success: false,
+          error: 'Failed to convert natural language query to rules'
+        });
+      }
     }
 
     // --- START OF THE CORRECTED LOGIC ---
     // This mapping logic now runs on ALL rules, fixing the bug.
     if (finalRules && finalRules.conditions) {
-        console.log('✅ Rules before mapping:', JSON.stringify(finalRules, null, 2));
-        finalRules.conditions = finalRules.conditions.map(condition => {
-            const fieldMapping = {
-                'totalSpend': 'total_spend',
-                'lastOrderDate': 'last_visit',
-                'visitCount': 'visit_count',
-            };
-            return {
-                ...condition,
-                field: fieldMapping[condition.field] || condition.field
-            };
-        });
-        console.log('✅ Rules after mapping:', JSON.stringify(finalRules, null, 2));
+      console.log('✅ Rules before mapping:', JSON.stringify(finalRules, null, 2));
+      finalRules.conditions = finalRules.conditions.map(condition => {
+        const fieldMapping = {
+          'totalSpend': 'total_spend',
+          'lastOrderDate': 'last_visit',
+          'visitCount': 'visit_count',
+        };
+        return {
+          ...condition,
+          field: fieldMapping[condition.field] || condition.field
+        };
+      });
+      console.log('✅ Rules after mapping:', JSON.stringify(finalRules, null, 2));
     }
     // --- END OF THE CORRECTED LOGIC ---
 
     if (!finalRules || !finalRules.conditions || !Array.isArray(finalRules.conditions)) {
+      await client.query('ROLLBACK');
       return res.status(400).json({
         success: false,
         error: 'Invalid rules structure after processing'
@@ -63,7 +63,6 @@ const createSegment = async (req, res) => {
     }
 
     const audienceSize = await evaluateRules(finalRules);
-
     const newSegment = await client.query(
       `INSERT INTO segments (name, description, rules_json, created_by, audience_size)
        VALUES ($1, $2, $3, $4, $5) RETURNING *`,
@@ -71,8 +70,8 @@ const createSegment = async (req, res) => {
     );
 
     await client.query('COMMIT');
-
     console.log('✅ Segment created:', name, 'Audience size:', audienceSize);
+
     res.status(201).json({
       success: true,
       message: 'Segment created successfully',
@@ -89,26 +88,22 @@ const createSegment = async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'Failed to create segment due to an internal error.',
-      details: error.message 
+      details: error.message
     });
   } finally {
     client.release();
   }
 };
 
-// ... (The rest of your file remains exactly the same)
-// ... (getSegments, getSegmentById, previewAudience, etc.)
-
 const getSegments = async (req, res) => {
   try {
-    const { 
-      page = 1, 
-      limit = 10, 
+    const {
+      page = 1,
+      limit = 10,
       search = '',
       sortBy = 'created_at',
       sortOrder = 'DESC'
     } = req.query;
-
     const offset = (parseInt(page) - 1) * parseInt(limit);
     const userId = req.user.id;
 
@@ -129,10 +124,9 @@ const getSegments = async (req, res) => {
 
     const validSortFields = ['name', 'audience_size', 'created_at', 'updated_at'];
     const validSortOrders = ['ASC', 'DESC'];
-    
     const sortField = validSortFields.includes(sortBy) ? sortBy : 'created_at';
     const sortDirection = validSortOrders.includes(sortOrder.toUpperCase()) ? sortOrder.toUpperCase() : 'DESC';
-    
+
     query += ` ORDER BY s.${sortField} ${sortDirection} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
     params.push(parseInt(limit), offset);
 
@@ -143,8 +137,8 @@ const getSegments = async (req, res) => {
 
     const segmentsWithParsedRules = segments.rows.map(segment => ({
       ...segment,
-      rules_json: typeof segment.rules_json === 'string' 
-        ? JSON.parse(segment.rules_json) 
+      rules_json: typeof segment.rules_json === 'string'
+        ? JSON.parse(segment.rules_json)
         : segment.rules_json
     }));
 
@@ -190,8 +184,8 @@ const getSegmentById = async (req, res) => {
 
     const segmentData = {
       ...segment.rows[0],
-      rules_json: typeof segment.rows[0].rules_json === 'string' 
-        ? JSON.parse(segment.rows[0].rules_json) 
+      rules_json: typeof segment.rows[0].rules_json === 'string'
+        ? JSON.parse(segment.rows[0].rules_json)
         : segment.rows[0].rules_json
     };
 
@@ -269,9 +263,9 @@ const previewAudience = async (req, res) => {
     });
   }
 };
+
 const updateSegment = async (req, res) => {
   const client = await pool.connect();
-  
   try {
     await client.query('BEGIN');
 
@@ -285,6 +279,7 @@ const updateSegment = async (req, res) => {
     );
 
     if (existingSegment.rows.length === 0) {
+      await client.query('ROLLBACK');
       return res.status(404).json({
         success: false,
         error: 'Segment not found'
@@ -294,11 +289,13 @@ const updateSegment = async (req, res) => {
     let audienceSize = null;
     if (rules) {
       if (!rules.conditions || !Array.isArray(rules.conditions)) {
+        await client.query('ROLLBACK');
         return res.status(400).json({
           success: false,
           error: 'Invalid rules structure'
         });
       }
+
       audienceSize = await evaluateRules(rules);
     }
 
@@ -322,7 +319,6 @@ const updateSegment = async (req, res) => {
       updateFields.push(`rules_json = $${paramIndex}`);
       updateValues.push(JSON.stringify(rules));
       paramIndex++;
-
       updateFields.push(`audience_size = $${paramIndex}`);
       updateValues.push(audienceSize);
       paramIndex++;
@@ -332,7 +328,7 @@ const updateSegment = async (req, res) => {
     updateValues.push(id);
 
     const updateQuery = `
-      UPDATE segments 
+      UPDATE segments
       SET ${updateFields.join(', ')}
       WHERE id = $${paramIndex} AND created_by = $${paramIndex + 1}
       RETURNING *
@@ -348,8 +344,8 @@ const updateSegment = async (req, res) => {
       message: 'Segment updated successfully',
       segment: {
         ...updatedSegment.rows[0],
-        rules_json: typeof updatedSegment.rows[0].rules_json === 'string' 
-          ? JSON.parse(updatedSegment.rows[0].rules_json) 
+        rules_json: typeof updatedSegment.rows[0].rules_json === 'string'
+          ? JSON.parse(updatedSegment.rows[0].rules_json)
           : updatedSegment.rows[0].rules_json
       }
     });
@@ -402,7 +398,7 @@ const getSegmentStats = async (req, res) => {
     const userId = req.user.id;
 
     const stats = await pool.query(`
-      SELECT 
+      SELECT
         COUNT(*) as total_segments,
         AVG(audience_size) as avg_audience_size,
         SUM(audience_size) as total_audience_reach,
