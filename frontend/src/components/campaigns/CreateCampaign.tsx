@@ -131,8 +131,8 @@ const CreateCampaign: React.FC<CreateCampaignProps> = ({
                     {/* FIX: Added explicit 'Segment' type for the parameter 'segment'. */}
                     {segments.map((segment: Segment) => (
                       <option key={segment.id} value={segment.id}>
-                        {segment.name} ({segment.audienceSize.toLocaleString()} customers)
-                      </option>
+  {segment.name} ({(segment.audienceSize ?? 0).toLocaleString()} customers)
+</option>
                     ))}
                   </select>
                 </div>
@@ -146,8 +146,8 @@ const CreateCampaign: React.FC<CreateCampaignProps> = ({
                       <div>
                         <h4 className="font-medium text-primary-900">{selectedSegment.name}</h4>
                         <p className="text-sm text-primary-700">
-                          {selectedSegment.audienceSize.toLocaleString()} customers
-                        </p>
+  {(selectedSegment.audienceSize ?? 0).toLocaleString()} customers
+</p>
                         {selectedSegment.description && (
                           <p className="text-sm text-primary-600 mt-1">{selectedSegment.description}</p>
                         )}

@@ -126,7 +126,7 @@ const Campaigns: React.FC = () => {
                   <option value="">Select target segment</option>
                   {segments.map((segment: any) => (
                     <option key={segment.id} value={segment.id}>
-                      {segment.name} ({segment.audienceSize.toLocaleString()} customers)
+                      {segment.name} ({(segment.audienceSize ?? 0).toLocaleString()} customers)
                     </option>
                   ))}
                 </select>
