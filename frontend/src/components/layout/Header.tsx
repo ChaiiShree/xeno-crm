@@ -1,36 +1,52 @@
-import React, { useState, useRef, useEffect } from 'react'
-import { Bell, Search, User, LogOut, Settings } from 'lucide-react'
-import { useAuth } from '../../hooks/useAuth'
-import Button from '../ui/Button'
-import Input from '../ui/Input'
+// frontend/src/components/layout/Header.tsx
 
-const Header: React.FC = () => {
-  const { user, logout } = useAuth()
-  const [showProfileMenu, setShowProfileMenu] = useState(false)
-  const [searchQuery, setSearchQuery] = useState('')
-  const profileMenuRef = useRef<HTMLDivElement>(null)
+import React, { useState, useRef, useEffect } from 'react';
+import { Bell, Search, User, LogOut, Settings, Menu } from 'lucide-react';
+import { useAuth } from '../../hooks/useAuth';
+import Button from '../ui/Button';
+import Input from '../ui/Input';
+
+// FIX: Add onToggleSidebar to the component's props interface
+interface HeaderProps {
+  onToggleSidebar: () => void;
+}
+
+const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
+  const { user, logout } = useAuth();
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const profileMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (profileMenuRef.current && !profileMenuRef.current.contains(event.target as Node)) {
-        setShowProfileMenu(false)
+        setShowProfileMenu(false);
       }
-    }
+    };
 
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [])
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const handleLogout = async () => {
-    await logout()
-    setShowProfileMenu(false)
-  }
+    await logout();
+    setShowProfileMenu(false);
+  };
 
   return (
     <header className="bg-white border-b border-gray-200 px-6 py-4">
       <div className="flex items-center justify-between">
-        {/* Search */}
-        <div className="flex-1 max-w-2xl">
+        {/* FIX: Add the hamburger menu button, visible only on mobile */}
+        <button
+          onClick={onToggleSidebar}
+          className="md:hidden text-gray-600 hover:text-gray-800 mr-4"
+          aria-label="Open sidebar"
+        >
+          <Menu className="w-6 h-6" />
+        </button>
+
+        {/* Search - now hidden on mobile to make space */}
+        <div className="hidden md:flex flex-1 max-w-2xl">
           <Input
             type="text"
             placeholder="Search customers, campaigns, segments..."
@@ -81,7 +97,6 @@ const Header: React.FC = () => {
                   <div className="font-medium text-gray-900">{user?.name}</div>
                   <div className="text-sm text-gray-500">{user?.email}</div>
                 </div>
-                
                 <button
                   onClick={() => setShowProfileMenu(false)}
                   className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center space-x-2"
@@ -89,7 +104,6 @@ const Header: React.FC = () => {
                   <Settings className="w-4 h-4" />
                   <span>Settings</span>
                 </button>
-                
                 <button
                   onClick={handleLogout}
                   className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center space-x-2"
@@ -103,7 +117,7 @@ const Header: React.FC = () => {
         </div>
       </div>
     </header>
-  )
-}
+  );
+};
 
-export default Header
+export default Header;
