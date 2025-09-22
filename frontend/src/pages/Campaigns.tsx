@@ -1,3 +1,5 @@
+// frontend/src/pages/Campaigns.tsx
+
 import React, { useState } from 'react'
 import { Plus, MessageSquare, Sparkles } from 'lucide-react'
 import { useAPI } from '../hooks/useAPI'
@@ -12,6 +14,9 @@ const Campaigns: React.FC = () => {
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [showMessageGenerator, setShowMessageGenerator] = useState(false)
   const [selectedCampaignData, setSelectedCampaignData] = useState<any>(null)
+  
+  // FIX: Added new state to manage the two steps in the AI generator modal.
+  const [showGeneratorComponent, setShowGeneratorComponent] = useState(false)
   
   const { useSegments } = useAPI()
   const { data: segmentsData } = useSegments()
@@ -81,81 +86,79 @@ const Campaigns: React.FC = () => {
         onClose={() => {
           setShowMessageGenerator(false)
           setSelectedCampaignData(null)
+          // FIX: Reset the generator component view on close.
+          setShowGeneratorComponent(false) 
         }}
         title="AI Message Generator"
         size="xl"
       >
-        <div className="space-y-6">
-          {!selectedCampaignData ? (
-            // Campaign Type and Audience Selection
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Campaign Type
-                </label>
-                <select
-                  onChange={(e) => setSelectedCampaignData(prev => ({ 
-                    ...prev, 
-                    campaignType: e.target.value 
-                  }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
-                >
-                  <option value="">Select campaign type</option>
-                  <option value="promotional">Promotional</option>
-                  <option value="winback">Win-back</option>
-                  <option value="welcome">Welcome Series</option>
-                  <option value="newsletter">Newsletter</option>
-                  <option value="announcement">Announcement</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Target Audience
-                </label>
-                <select
-                  onChange={(e) => {
-                    const segment = segments.find(s => s.id === parseInt(e.target.value))
-                    setSelectedCampaignData(prev => ({ 
-                      ...prev, 
-                      audience: segment 
-                    }))
-                  }}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
-                >
-                  <option value="">Select target segment</option>
-                  {segments.map((segment: any) => (
-                    <option key={segment.id} value={segment.id}>
-                      {segment.name} ({(segment.audienceSize ?? 0).toLocaleString()} customers)
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="flex justify-end">
-                <Button
-                  onClick={() => {
-                    if (selectedCampaignData?.campaignType && selectedCampaignData?.audience) {
-                      // Keep the current state to show the MessageGenerator
-                    }
-                  }}
-                  disabled={!selectedCampaignData?.campaignType || !selectedCampaignData?.audience}
-                  className="bg-purple-600 hover:bg-purple-700"
-                >
-                  <MessageSquare className="w-4 h-4 mr-2" />
-                  Generate Messages
-                </Button>
-              </div>
+        {/* FIX: Use the new state to conditionally render the form or the generator. */}
+        {!showGeneratorComponent ? (
+          // Step 1: Campaign Type and Audience Selection
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Campaign Type
+              </label>
+              <select
+                onChange={(e) => setSelectedCampaignData(prev => ({ 
+                  ...prev, 
+                  campaignType: e.target.value 
+                }))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+              >
+                <option value="">Select campaign type</option>
+                <option value="promotional">Promotional</option>
+                <option value="winback">Win-back</option>
+                <option value="welcome">Welcome Series</option>
+                <option value="newsletter">Newsletter</option>
+                <option value="announcement">Announcement</option>
+              </select>
             </div>
-          ) : (
-            // Message Generator Component
-            <MessageGenerator
-              campaignType={selectedCampaignData.campaignType}
-              audience={selectedCampaignData.audience}
-              onMessageGenerated={handleMessageGenerated}
-            />
-          )}
-        </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Target Audience
+              </label>
+              <select
+                onChange={(e) => {
+                  const segment = segments.find(s => s.id === parseInt(e.target.value))
+                  setSelectedCampaignData(prev => ({ 
+                    ...prev, 
+                    audience: segment 
+                  }))
+                }}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+              >
+                <option value="">Select target segment</option>
+                {segments.map((segment: any) => (
+                  <option key={segment.id} value={segment.id}>
+                    {segment.name} ({(segment.audienceSize ?? 0).toLocaleString()} customers)
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex justify-end pt-4 border-t">
+              <Button
+                // FIX: Set state to true to advance to the next step.
+                onClick={() => setShowGeneratorComponent(true)} 
+                disabled={!selectedCampaignData?.campaignType || !selectedCampaignData?.audience}
+                className="bg-purple-600 hover:bg-purple-700"
+              >
+                <MessageSquare className="w-4 h-4 mr-2" />
+                Generate Messages
+              </Button>
+            </div>
+          </div>
+        ) : (
+          // Step 2: Message Generator Component
+          <MessageGenerator
+            campaignType={selectedCampaignData.campaignType}
+            audience={selectedCampaignData.audience}
+            onMessageGenerated={handleMessageGenerated}
+          />
+        )}
       </Modal>
     </div>
   )

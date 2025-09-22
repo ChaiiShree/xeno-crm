@@ -1,3 +1,5 @@
+// frontend/src/components/ui/Modal.tsx
+
 import React, { useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
@@ -100,7 +102,8 @@ const Modal: React.FC<ModalProps> = ({
         )}
         
         {/* Content */}
-        <div className="overflow-y-auto max-h-[calc(90vh-8rem)]">
+        {/* FIX: Added 'p-6' for padding around the modal's children. */}
+        <div className="p-6 overflow-y-auto max-h-[calc(90vh-8rem)]">
           {children}
         </div>
       </div>
