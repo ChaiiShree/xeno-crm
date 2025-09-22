@@ -1,20 +1,21 @@
-// src/services/auth.ts
+// frontend/src/services/auth.ts
 
 import { api } from './api';
 import type { User } from '../types/auth';
 
 class AuthService {
   getGoogleAuthUrl(): string {
-    // FIX: Added the '/api' prefix to match the backend's routing structure.
-    // Also updated the fallback port to 7860 for local development consistency.
     const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:7860';
+
+    // ---- START OF TEST CODE ----
+    // This will print the value being used by the live Vercel deployment.
+    console.log('VITE_API_URL being used by the app:', apiUrl);
+    // ---- END OF TEST CODE ----
+
     return `${apiUrl}/api/auth/google`;
   }
   
-  handleDemoLogin(demoUser: User): void {
-    localStorage.setItem('auth_token', 'demo-auth-token-is-not-real');
-    localStorage.setItem('xeno_user', JSON.stringify(demoUser));
-  }
+  // ... (the rest of the file remains exactly the same) ...
 
   async handleAuthCallback(token: string): Promise<User | null> {
     try {
@@ -54,7 +55,7 @@ class AuthService {
       return user;
     } catch (error) {
       console.error("Auth check with API failed:", error);
-      this.logout(); // Logout if the token is invalid
+      this.logout();
       return null;
     }
   }
@@ -65,22 +66,18 @@ class AuthService {
       return response.data.user;
     } catch (error) {
       console.error("Could not fetch current user:", error);
-      // The api interceptor will handle the logout on 401/403 errors.
       throw error;
     }
   }
 
   async logout(): Promise<void> {
     try {
-      // Notify the backend to invalidate the session/token if applicable
       await api.post('/auth/logout');
     } catch (error) {
       console.error("Backend logout failed, clearing client-side anyway.", error);
     } finally {
-      // Always clear client-side credentials
       localStorage.removeItem('auth_token');
       localStorage.removeItem('xeno_user');
-      // Redirect to login to clear all application state
       window.location.href = '/login';
     }
   }
