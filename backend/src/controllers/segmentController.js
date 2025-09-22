@@ -1,6 +1,6 @@
 const { pool } = require('../config/database');
 const { evaluateRules } = require('../utils/ruleEngine');
-const { generateSegmentFromNLP } = require('../services/aiService');
+const aiService = require('../services/aiService');
 
 // File: segmentController.js
 const createSegment = async (req, res) => {
@@ -25,7 +25,7 @@ const createSegment = async (req, res) => {
     if (nlpQuery && !finalRules) {
       try {
         console.log('🤖 Converting NLP query to rules:', nlpQuery);
-        finalRules = await generateSegmentFromNLP(nlpQuery);
+        finalRules = await aiService.generateSegmentFromNLP(nlpQuery);
         console.log('✅ AI generated rules:', JSON.stringify(finalRules, null, 2));
       } catch (aiError) {
         console.error('❌ AI conversion failed:', aiError);
@@ -222,7 +222,7 @@ const previewAudience = async (req, res) => {
     // If rules are not provided, generate them from the NLP query
     if (nlpQuery && !finalRules) {
       try {
-        finalRules = await generateSegmentFromNLP(nlpQuery);
+        finalRules = await aiService.generateSegmentFromNLP(nlpQuery);
       } catch (aiError) {
         console.error('❌ AI conversion failed:', aiError);
         return res.status(400).json({
