@@ -16,7 +16,6 @@ const orderRoutes = require('./routes/orders');
 const segmentRoutes = require('./routes/segments');
 const campaignRoutes = require('./routes/campaigns');
 const aiRoutes = require('./routes/ai');
-const demoRoutes = require('./routes/demo');
 
 const app = express();
 const PORT = process.env.PORT || 7860;
@@ -64,7 +63,6 @@ app.use('/api/orders', orderRoutes);
 app.use('/api/segments', segmentRoutes);
 app.use('/api/campaigns', campaignRoutes);
 app.use('/api/ai', aiRoutes);
-app.use('/api/demo', demoRoutes);
 
 // Health check
 app.get('/health', (req, res) => {
