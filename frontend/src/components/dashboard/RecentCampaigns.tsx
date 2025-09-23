@@ -115,10 +115,10 @@ const RecentCampaigns: React.FC = () => {
 
               <div className="text-right">
                 <div className="text-sm font-medium text-gray-900">
-                  {campaign.sentCount.toLocaleString()} sent
+                  {`${(campaign.sentCount ?? 0).toLocaleString()} sent`}
                 </div>
                 <div className="text-xs text-gray-500">
-                  {campaign.failedCount} failed
+                  {`${campaign.failedCount ?? 0} failed`}
                 </div>
               </div>
             </div>

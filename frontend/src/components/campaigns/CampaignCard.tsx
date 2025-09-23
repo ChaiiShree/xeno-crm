@@ -95,8 +95,8 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
             <span>Sent</span>
           </div>
           <div className="font-semibold text-gray-900">
-            {campaign.sentCount.toLocaleString()}
-          </div>
+  {(campaign.sentCount ?? 0).toLocaleString()}
+</div>
         </div>
         <div className="text-center">
           <div className="flex items-center justify-center space-x-1 text-sm text-gray-500 mb-1">
