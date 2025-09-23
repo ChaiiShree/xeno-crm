@@ -10,23 +10,32 @@ class AuthService {
   }
 
   /**
-   * NEW: Handles the demo login flow by calling the backend endpoint.
+   * Handles the demo login flow by calling the backend endpoint using fetch.
    */
   async demoLogin(): Promise<User | null> {
     try {
-      const response = await api.post('/auth/demo');
-      const { token, user } = response.data;
-
-      if (token && user) {
-        // If the backend returns a token and user, save them immediately.
-        localStorage.setItem('auth_token', token);
-        localStorage.setItem('xeno_user', JSON.stringify(user));
-        return user;
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:7860'}/api/demo/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error('Demo login failed');
       }
-      return null;
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        localStorage.setItem('auth_token', data.token);
+        localStorage.setItem('xeno_user', JSON.stringify(data.user));
+        return data.user;
+      } else {
+        throw new Error(data.error || 'Demo login failed');
+      }
     } catch (error) {
-      console.error("Demo login failed:", error);
-      // Don't automatically log out, just throw the error
+      console.error('Demo login error:', error);
       throw error;
     }
   }
