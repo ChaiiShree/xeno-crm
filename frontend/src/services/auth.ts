@@ -6,16 +6,30 @@ import type { User } from '../types/auth';
 class AuthService {
   getGoogleAuthUrl(): string {
     const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:7860';
-
-    // ---- START OF TEST CODE ----
-    // This will print the value being used by the live Vercel deployment.
-    console.log('VITE_API_URL being used by the app:', apiUrl);
-    // ---- END OF TEST CODE ----
-
     return `${apiUrl}/api/auth/google`;
   }
-  
-  // ... (the rest of the file remains exactly the same) ...
+
+  /**
+   * NEW: Handles the demo login flow by calling the backend endpoint.
+   */
+  async demoLogin(): Promise<User | null> {
+    try {
+      const response = await api.post('/auth/demo');
+      const { token, user } = response.data;
+
+      if (token && user) {
+        // If the backend returns a token and user, save them immediately.
+        localStorage.setItem('auth_token', token);
+        localStorage.setItem('xeno_user', JSON.stringify(user));
+        return user;
+      }
+      return null;
+    } catch (error) {
+      console.error("Demo login failed:", error);
+      // Don't automatically log out, just throw the error
+      throw error;
+    }
+  }
 
   async handleAuthCallback(token: string): Promise<User | null> {
     try {

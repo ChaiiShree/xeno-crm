@@ -1,4 +1,4 @@
-// File: routes/auth.js
+// backend/src/routes/auth.js
 
 const express = require('express');
 const passport = require('passport');
@@ -7,45 +7,42 @@ const {
   googleCallback, 
   getCurrentUser, 
   logout, 
-  checkAuth 
+  checkAuth,
+  demoLogin // Import the new controller
 } = require('../controllers/authController');
 
 const router = express.Router();
 
 // Google OAuth routes
-// This route starts the Google login process
 router.get('/google', 
   passport.authenticate('google', { 
     scope: ['profile', 'email'] 
   })
 );
 
-// Google redirects the user back to this route after they log in
 router.get('/google/callback',
-  // FIX: Added `session: false` to disable session creation.
-  // We will handle authentication with a JWT instead.
   passport.authenticate('google', { 
     failureRedirect: '/auth/failure', 
     session: false 
   }),
-  googleCallback // The controller now creates and sends the JWT
+  googleCallback
 );
 
-// Auth failure redirect
 router.get('/failure', (req, res) => {
   res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:5173'}/login?error=auth_failed`);
 });
 
+// NEW: Add the route for demo login
+router.post('/demo', demoLogin);
+
 // Get current authenticated user
 router.get('/me', authenticateToken, getCurrentUser);
 
-// Check authentication status (optional auth)
+// Check authentication status
 router.get('/check', optionalAuth, checkAuth);
 
 // Logout
 router.post('/logout', authenticateToken, logout);
-
-// Alternative logout route (GET for easier frontend integration)
-router.get('/logout', authenticateToken, logout);
+router.get('/logout', authenticateToken, logout); // Keep for easier integration
 
 module.exports = router;
